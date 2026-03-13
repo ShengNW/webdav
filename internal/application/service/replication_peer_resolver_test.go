@@ -91,10 +91,9 @@ func (r *fakeClusterAssignmentRepository) ReleaseByActiveExcept(context.Context,
 	return nil
 }
 
-func TestReplicationPeerResolverUsesRegistryURLForConfiguredNode(t *testing.T) {
+func TestReplicationPeerResolverResolveByNodeIDUsesRegistryURL(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.PeerNodeID = "node-b"
 
 	heartbeat := time.Date(2026, 3, 13, 8, 0, 0, 0, time.UTC)
 	repo := &fakeClusterNodeRepository{
@@ -111,9 +110,9 @@ func TestReplicationPeerResolverUsesRegistryURLForConfiguredNode(t *testing.T) {
 	resolver := NewReplicationPeerResolver(cfg, repo).(*ClusterReplicationPeerResolver)
 	resolver.now = func() time.Time { return heartbeat.Add(5 * time.Second) }
 
-	peer, err := resolver.ResolveDispatchTarget(context.Background())
+	peer, err := resolver.ResolveByNodeID(context.Background(), "node-b", true)
 	if err != nil {
-		t.Fatalf("ResolveDispatchTarget: %v", err)
+		t.Fatalf("ResolveByNodeID: %v", err)
 	}
 	if peer == nil {
 		t.Fatalf("expected peer to be resolved")
@@ -126,7 +125,7 @@ func TestReplicationPeerResolverUsesRegistryURLForConfiguredNode(t *testing.T) {
 	}
 }
 
-func TestReplicationPeerResolverFallsBackToLatestStandbyWhenPeerNodeIDIsEmpty(t *testing.T) {
+func TestReplicationPeerResolverFallsBackToLatestStandbyWithoutAssignmentRepo(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Node.Role = "active"
 
@@ -240,7 +239,6 @@ func TestReplicationPeerResolverDoesNotFallbackWithoutEffectiveAssignment(t *tes
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.PeerNodeID = "node-b"
 
 	now := time.Date(2026, 3, 13, 8, 0, 0, 0, time.UTC)
 	nodes := &fakeClusterNodeRepository{

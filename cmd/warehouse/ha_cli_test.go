@@ -28,15 +28,14 @@ func TestResolveHABaseURLDefaultsToLocalhost(t *testing.T) {
 	}
 }
 
-func TestResolveHABaseURLUsesPeerWhenRequested(t *testing.T) {
+func TestResolveHABaseURLUsesExplicitOverrideWhenRequested(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Internal.Replication.PeerBaseURL = "http://127.0.0.1:6066"
 
 	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
 	flags.String("base-url", "", "")
 	flags.Bool("peer", false, "")
-	if err := flags.Set("peer", "true"); err != nil {
-		t.Fatalf("set peer flag: %v", err)
+	if err := flags.Set("base-url", "http://127.0.0.1:6066"); err != nil {
+		t.Fatalf("set base-url flag: %v", err)
 	}
 
 	baseURL, err := resolveHABaseURL(cfg, flags)

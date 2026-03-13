@@ -53,7 +53,7 @@ func NewMutationRecorder(
 	if cfg == nil || outbox == nil {
 		return noopMutationRecorder{}
 	}
-	if !cfg.Internal.Replication.Enabled || strings.ToLower(strings.TrimSpace(cfg.Node.Role)) != "active" {
+	if !cfg.Replication.Enabled || strings.ToLower(strings.TrimSpace(cfg.Node.Role)) != "active" {
 		return noopMutationRecorder{}
 	}
 

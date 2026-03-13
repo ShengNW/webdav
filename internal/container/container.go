@@ -307,7 +307,7 @@ func (c *Container) initHandlers() error {
 	// 健康检查处理器
 	readinessChecker := apphealth.NewReadinessChecker(c.DB.DB, c.Config.WebDAV.Directory)
 	c.HealthHandler = handler.NewHealthHandler(c.Logger, readinessChecker)
-	if c.Config.Internal.Replication.Enabled {
+	if c.Config.Replication.Enabled {
 		c.InternalReplicationHandler = handler.NewInternalReplicationHandler(
 			c.Config,
 			c.Logger,

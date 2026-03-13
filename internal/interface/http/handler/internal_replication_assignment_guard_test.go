@@ -86,7 +86,7 @@ func TestInternalReplicationHandleFSApplyRejectsUnassignedSourceNode(t *testing.
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-b"
 	cfg.Node.Role = "standby"
-	cfg.Internal.Replication.Enabled = true
+	cfg.Replication.Enabled = true
 	cfg.WebDAV.Directory = t.TempDir()
 
 	assignments := &fakeHandlerAssignmentRepository{
@@ -117,7 +117,7 @@ func TestInternalReplicationHandleBootstrapMarkRejectsExpiredAssignment(t *testi
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-b"
 	cfg.Node.Role = "standby"
-	cfg.Internal.Replication.Enabled = true
+	cfg.Replication.Enabled = true
 	cfg.WebDAV.Directory = t.TempDir()
 
 	assignments := &fakeHandlerAssignmentRepository{
@@ -147,7 +147,7 @@ func TestInternalReplicationHandleReconcileApplyBatchRejectsUnassignedSourceNode
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-b"
 	cfg.Node.Role = "standby"
-	cfg.Internal.Replication.Enabled = true
+	cfg.Replication.Enabled = true
 	cfg.WebDAV.Directory = t.TempDir()
 
 	assignments := &fakeHandlerAssignmentRepository{

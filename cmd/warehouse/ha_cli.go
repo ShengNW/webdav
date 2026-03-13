@@ -353,7 +353,7 @@ func newHAFlags(name string) *pflag.FlagSet {
 	flags := pflag.NewFlagSet(name, pflag.ContinueOnError)
 	flags.StringP("config", "c", "", "Config file path")
 	flags.String("base-url", "", "Internal base URL override, such as http://127.0.0.1:6065")
-	flags.Bool("peer", false, "Use internal.replication.peer_base_url from config")
+	flags.Bool("peer", false, "Resolve peer base URL from the effective assignment in the control plane")
 	flags.Duration("timeout", 0, "HTTP timeout override")
 	flags.BoolP("help", "h", false, "Show help")
 	return flags
@@ -372,7 +372,7 @@ func buildHAClientFromFlags(flags *pflag.FlagSet) (*haClient, string, error) {
 
 	timeout, _ := flags.GetDuration("timeout")
 	if timeout <= 0 {
-		timeout = cfg.Internal.Replication.RequestTimeout
+		timeout = cfg.Replication.RequestTimeout
 		if timeout <= 0 {
 			timeout = 10 * time.Second
 		}
@@ -414,7 +414,7 @@ func resolveHATarget(cfg *config.Config, flags *pflag.FlagSet) (string, *int64, 
 			return "", nil, err
 		}
 		if peer == nil || strings.TrimSpace(peer.BaseURL) == "" {
-			return "", nil, fmt.Errorf("failed to resolve peer base url from config or cluster registry")
+			return "", nil, fmt.Errorf("failed to resolve peer base url from control plane")
 		}
 		normalized, err := normalizeURL(peer.BaseURL)
 		return normalized, peer.AssignmentGeneration, err
@@ -436,15 +436,6 @@ func resolveHATarget(cfg *config.Config, flags *pflag.FlagSet) (string, *int64, 
 func resolveHAPeer(cfg *config.Config) (*service.ResolvedReplicationPeer, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config is required")
-	}
-	nodeID := strings.TrimSpace(cfg.Internal.Replication.PeerNodeID)
-	baseURL := strings.TrimSpace(cfg.Internal.Replication.PeerBaseURL)
-	if baseURL != "" {
-		return &service.ResolvedReplicationPeer{
-			NodeID:  nodeID,
-			BaseURL: baseURL,
-			Source:  "config",
-		}, nil
 	}
 	return resolvePeerFromControlPlane(cfg)
 }
@@ -528,7 +519,7 @@ func (c *haClient) signRequest(req *http.Request, body []byte) {
 		strings.TrimSpace(c.cfg.Node.ID),
 		timestamp,
 		payloadHash,
-		strings.TrimSpace(c.cfg.Internal.Replication.SharedSecret),
+		strings.TrimSpace(c.cfg.Replication.SharedSecret),
 	))
 }
 

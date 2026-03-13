@@ -188,9 +188,7 @@ func TestInternalReplicationHandleStatusActive(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-b"
-	cfg.Internal.Replication.PeerBaseURL = "https://standby.internal"
+	cfg.Replication.Enabled = true
 
 	lastOutboxID := int64(12)
 	lastDispatched := int64(11)
@@ -229,7 +227,15 @@ func TestInternalReplicationHandleStatusActive(t *testing.T) {
 		},
 		nil,
 		nil,
-		nil,
+		fakeHandlerPeerResolver{
+			target: &service.ResolvedReplicationPeer{
+				NodeID:          "node-b",
+				BaseURL:         "https://standby.internal",
+				Source:          "assignment+registry",
+				Healthy:         true,
+				LastHeartbeatAt: timePointer(time.Now()),
+			},
+		},
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/internal/replication/status", nil)
@@ -254,8 +260,8 @@ func TestInternalReplicationHandleStatusActive(t *testing.T) {
 	if !resp.Replication.WorkerEnabled {
 		t.Fatalf("expected worker to be enabled: %#v", resp.Replication)
 	}
-	if resp.Replication.PeerNodeID != "node-b" || resp.Replication.PeerBaseURL != "https://standby.internal" {
-		t.Fatalf("unexpected peer payload: %#v", resp.Replication)
+	if resp.Replication.ResolvedPeerNodeID != "node-b" || resp.Replication.ResolvedPeerBaseURL != "https://standby.internal" {
+		t.Fatalf("unexpected resolved peer payload: %#v", resp.Replication)
 	}
 	if resp.Replication.LastOutboxID == nil || *resp.Replication.LastOutboxID != lastOutboxID {
 		t.Fatalf("unexpected last outbox id: %#v", resp.Replication.LastOutboxID)
@@ -293,8 +299,7 @@ func TestInternalReplicationHandleStatusStandbyUsesReversePair(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-b"
 	cfg.Node.Role = "standby"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-a"
+	cfg.Replication.Enabled = true
 
 	lastOutboxID := int64(42)
 	lastDispatched := int64(42)
@@ -323,7 +328,15 @@ func TestInternalReplicationHandleStatusStandbyUsesReversePair(t *testing.T) {
 		},
 		nil,
 		nil,
-		nil,
+		fakeHandlerPeerResolver{
+			target: &service.ResolvedReplicationPeer{
+				NodeID:          "node-a",
+				BaseURL:         "https://active.internal",
+				Source:          "assignment+registry",
+				Healthy:         true,
+				LastHeartbeatAt: timePointer(time.Now()),
+			},
+		},
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/internal/replication/status", nil)
@@ -357,8 +370,7 @@ func TestInternalReplicationHandleStatusStandbyBootstrapRequired(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-b"
 	cfg.Node.Role = "standby"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-a"
+	cfg.Replication.Enabled = true
 
 	lastOutboxID := int64(5)
 	handler := NewInternalReplicationHandler(
@@ -380,7 +392,15 @@ func TestInternalReplicationHandleStatusStandbyBootstrapRequired(t *testing.T) {
 		},
 		nil,
 		nil,
-		nil,
+		fakeHandlerPeerResolver{
+			target: &service.ResolvedReplicationPeer{
+				NodeID:          "node-a",
+				BaseURL:         "https://active.internal",
+				Source:          "assignment+registry",
+				Healthy:         true,
+				LastHeartbeatAt: timePointer(time.Now()),
+			},
+		},
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/internal/replication/status", nil)
@@ -409,8 +429,7 @@ func TestInternalReplicationHandleBootstrapMarkWithExplicitOutboxID(t *testing.T
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-b"
 	cfg.Node.Role = "standby"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-a"
+	cfg.Replication.Enabled = true
 
 	handler := NewInternalReplicationHandler(
 		cfg,
@@ -460,8 +479,7 @@ func TestInternalReplicationHandleBootstrapMarkUsesCurrentLastOutboxID(t *testin
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-b"
 	cfg.Node.Role = "standby"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-a"
+	cfg.Replication.Enabled = true
 
 	lastOutboxID := int64(11)
 	handler := NewInternalReplicationHandler(
@@ -513,8 +531,7 @@ func TestInternalReplicationHandleBootstrapMarkRejectsBackwardOffset(t *testing.
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-b"
 	cfg.Node.Role = "standby"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-a"
+	cfg.Replication.Enabled = true
 
 	handler := NewInternalReplicationHandler(
 		cfg,
@@ -565,8 +582,7 @@ func TestInternalReplicationHandleBootstrapMarkAllowsGenerationFenceReset(t *tes
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-b"
 	cfg.Node.Role = "standby"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-a"
+	cfg.Replication.Enabled = true
 
 	assignmentGeneration := int64(2)
 	assignments := &fakeHandlerAssignmentRepository{
@@ -624,8 +640,7 @@ func TestInternalReplicationHandleReconcileStart(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-b"
+	cfg.Replication.Enabled = true
 
 	lastOutboxID := int64(15)
 	generation := int64(6)
@@ -733,7 +748,7 @@ func TestInternalReplicationHandleReconcileStartAutoBootstrapsWatermark(t *testi
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
+	cfg.Replication.Enabled = true
 	cfg.WebDAV.Directory = t.TempDir()
 
 	lastOutboxID := int64(15)
@@ -839,8 +854,7 @@ func TestInternalReplicationHandleReconcileStartPersistsAssignmentError(t *testi
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-b"
+	cfg.Replication.Enabled = true
 
 	lastOutboxID := int64(15)
 	generation := int64(6)
@@ -913,7 +927,7 @@ func TestStartReconcileReturnsAssignmentUnavailableWhenNoEffectiveAssignment(t *
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
+	cfg.Replication.Enabled = true
 
 	handler := NewInternalReplicationHandler(
 		cfg,

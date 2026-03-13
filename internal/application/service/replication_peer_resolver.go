@@ -31,24 +31,22 @@ type ResolvedReplicationPeer struct {
 	AssignmentGeneration *int64
 }
 
-// ReplicationPeerResolver chooses the current peer using static config and/or shared control plane state.
+// ReplicationPeerResolver chooses the current peer from shared control-plane state.
 type ReplicationPeerResolver interface {
 	ResolveTarget(ctx context.Context) (*ResolvedReplicationPeer, error)
 	ResolveDispatchTarget(ctx context.Context) (*ResolvedReplicationPeer, error)
 	ResolveByNodeID(ctx context.Context, nodeID string, requireHealthy bool) (*ResolvedReplicationPeer, error)
 }
 
-// ClusterReplicationPeerResolver discovers peers via cluster_nodes with static fallback.
+// ClusterReplicationPeerResolver discovers peers via assignment + cluster_nodes.
 type ClusterReplicationPeerResolver struct {
-	config        *config.Config
-	nodes         repository.ClusterNodeRepository
-	assignments   repository.ClusterReplicationAssignmentRepository
-	now           func() time.Time
-	maxStaleness  time.Duration
-	selfRole      string
-	peerRole      string
-	configuredID  string
-	configuredURL string
+	config       *config.Config
+	nodes        repository.ClusterNodeRepository
+	assignments  repository.ClusterReplicationAssignmentRepository
+	now          func() time.Time
+	maxStaleness time.Duration
+	selfRole     string
+	peerRole     string
 }
 
 // NewReplicationPeerResolver creates a new peer resolver.
@@ -70,15 +68,13 @@ func NewReplicationPeerResolver(
 		peerRole = "active"
 	}
 	return &ClusterReplicationPeerResolver{
-		config:        cfg,
-		nodes:         nodes,
-		assignments:   assignmentRepo,
-		now:           time.Now,
-		maxStaleness:  defaultClusterNodeStaleness,
-		selfRole:      selfRole,
-		peerRole:      peerRole,
-		configuredID:  strings.TrimSpace(cfg.Internal.Replication.PeerNodeID),
-		configuredURL: strings.TrimSpace(cfg.Internal.Replication.PeerBaseURL),
+		config:       cfg,
+		nodes:        nodes,
+		assignments:  assignmentRepo,
+		now:          time.Now,
+		maxStaleness: defaultClusterNodeStaleness,
+		selfRole:     selfRole,
+		peerRole:     peerRole,
 	}
 }
 
@@ -93,9 +89,6 @@ func (r *ClusterReplicationPeerResolver) ResolveTarget(ctx context.Context) (*Re
 	}
 	if r.assignments != nil {
 		return nil, nil
-	}
-	if r.configuredID != "" {
-		return r.ResolveByNodeID(ctx, r.configuredID, false)
 	}
 	return r.resolveByRole(ctx, false)
 }
@@ -112,9 +105,6 @@ func (r *ClusterReplicationPeerResolver) ResolveDispatchTarget(ctx context.Conte
 	if r.assignments != nil {
 		return nil, nil
 	}
-	if r.configuredID != "" {
-		return r.ResolveByNodeID(ctx, r.configuredID, true)
-	}
 	return r.resolveByRole(ctx, true)
 }
 
@@ -124,28 +114,19 @@ func (r *ClusterReplicationPeerResolver) ResolveByNodeID(ctx context.Context, no
 	if r == nil || nodeID == "" {
 		return nil, nil
 	}
-	configuredURLApplicable := r.configuredID != "" && nodeID == r.configuredID && r.configuredURL != ""
-	source := "explicit"
-	if r.configuredID != "" && nodeID == r.configuredID {
-		source = "config"
-	}
-
 	peer := &ResolvedReplicationPeer{
 		NodeID: nodeID,
-		Source: source,
-	}
-	if configuredURLApplicable {
-		peer.BaseURL = r.configuredURL
+		Source: "explicit",
 	}
 
 	if r.nodes == nil {
-		return r.finalizeResolvedPeer(peer, requireHealthy, configuredURLApplicable)
+		return r.finalizeResolvedPeer(peer, requireHealthy)
 	}
 
 	node, err := r.nodes.Get(ctx, nodeID)
 	if err != nil {
 		if errors.Is(err, cluster.ErrNodeNotFound) {
-			return r.finalizeResolvedPeer(peer, requireHealthy, configuredURLApplicable)
+			return r.finalizeResolvedPeer(peer, requireHealthy)
 		}
 		return nil, err
 	}
@@ -154,15 +135,12 @@ func (r *ClusterReplicationPeerResolver) ResolveByNodeID(ctx context.Context, no
 	peer.LastHeartbeatAt = &node.LastHeartbeatAt
 
 	registryURL := strings.TrimSpace(node.AdvertiseURL)
-	switch {
-	case peer.BaseURL == "" && registryURL != "":
+	if registryURL != "" {
 		peer.BaseURL = registryURL
 		peer.Source = "registry"
-	case peer.BaseURL != "" && registryURL != "" && peer.BaseURL == registryURL:
-		peer.Source = source + "+registry"
 	}
 
-	return r.finalizeResolvedPeer(peer, requireHealthy, configuredURLApplicable)
+	return r.finalizeResolvedPeer(peer, requireHealthy)
 }
 
 func (r *ClusterReplicationPeerResolver) resolveByAssignment(ctx context.Context, requireHealthy bool) (*ResolvedReplicationPeer, error) {
@@ -257,7 +235,7 @@ func (r *ClusterReplicationPeerResolver) resolveByRole(ctx context.Context, requ
 	}, nil
 }
 
-func (r *ClusterReplicationPeerResolver) finalizeResolvedPeer(peer *ResolvedReplicationPeer, requireHealthy, configuredURL bool) (*ResolvedReplicationPeer, error) {
+func (r *ClusterReplicationPeerResolver) finalizeResolvedPeer(peer *ResolvedReplicationPeer, requireHealthy bool) (*ResolvedReplicationPeer, error) {
 	if peer == nil {
 		return nil, nil
 	}
@@ -271,9 +249,6 @@ func (r *ClusterReplicationPeerResolver) finalizeResolvedPeer(peer *ResolvedRepl
 	}
 	if peer.BaseURL == "" {
 		return nil, nil
-	}
-	if configuredURL {
-		return peer, nil
 	}
 	if !peer.Healthy {
 		return nil, nil

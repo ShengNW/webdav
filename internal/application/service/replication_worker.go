@@ -52,7 +52,7 @@ func NewReplicationWorker(cfg *config.Config, outbox repository.ReplicationOutbo
 		config:       cfg,
 		outbox:       outbox,
 		peerResolver: peerResolver,
-		client:       &http.Client{Timeout: cfg.Internal.Replication.RequestTimeout},
+		client:       &http.Client{Timeout: cfg.Replication.RequestTimeout},
 		logger:       logger,
 		now:          time.Now,
 	}
@@ -63,7 +63,7 @@ func (w *ReplicationWorker) Enabled() bool {
 	if w == nil || w.config == nil {
 		return false
 	}
-	replCfg := w.config.Internal.Replication
+	replCfg := w.config.Replication
 	return replCfg.Enabled && strings.ToLower(strings.TrimSpace(w.config.Node.Role)) == "active"
 }
 
@@ -73,19 +73,17 @@ func (w *ReplicationWorker) Run(ctx context.Context) {
 		return
 	}
 
-	interval := w.config.Internal.Replication.DispatchInterval
+	interval := w.config.Replication.DispatchInterval
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	w.logger.Info("replication worker started",
 		zap.String("source_node_id", w.config.Node.ID),
-		zap.String("configured_target_node_id", w.config.Internal.Replication.PeerNodeID),
 		zap.Duration("dispatch_interval", interval),
-		zap.Int("batch_size", w.config.Internal.Replication.BatchSize),
+		zap.Int("batch_size", w.config.Replication.BatchSize),
 	)
 	defer w.logger.Info("replication worker stopped",
 		zap.String("source_node_id", w.config.Node.ID),
-		zap.String("configured_target_node_id", w.config.Internal.Replication.PeerNodeID),
 	)
 
 	if err := w.DispatchOnce(ctx); err != nil && !errors.Is(err, context.Canceled) {
@@ -123,7 +121,7 @@ func (w *ReplicationWorker) DispatchOnce(ctx context.Context) error {
 
 	sourceNodeID := w.config.Node.ID
 	targetNodeID := peer.NodeID
-	events, err := w.outbox.ListPending(ctx, sourceNodeID, targetNodeID, peer.AssignmentGeneration, w.config.Internal.Replication.BatchSize)
+	events, err := w.outbox.ListPending(ctx, sourceNodeID, targetNodeID, peer.AssignmentGeneration, w.config.Replication.BatchSize)
 	if err != nil {
 		return fmt.Errorf("list pending replication events: %w", err)
 	}
@@ -296,24 +294,14 @@ func (w *ReplicationWorker) signRequest(req *http.Request, payloadHash string) e
 		w.config.Node.ID,
 		timestamp,
 		payloadHash,
-		w.config.Internal.Replication.SharedSecret,
+		w.config.Replication.SharedSecret,
 	))
 	return nil
 }
 
 func (w *ReplicationWorker) resolveDispatchPeer(ctx context.Context) (*ResolvedReplicationPeer, error) {
 	if w.peerResolver == nil {
-		nodeID := strings.TrimSpace(w.config.Internal.Replication.PeerNodeID)
-		baseURL := strings.TrimSpace(w.config.Internal.Replication.PeerBaseURL)
-		if nodeID == "" || baseURL == "" {
-			return nil, nil
-		}
-		return &ResolvedReplicationPeer{
-			NodeID:  nodeID,
-			BaseURL: baseURL,
-			Source:  "config",
-			Healthy: true,
-		}, nil
+		return nil, nil
 	}
 	return w.peerResolver.ResolveDispatchTarget(ctx)
 }
@@ -327,8 +315,8 @@ func (w *ReplicationWorker) resolveLocalPath(storagePath string) (string, error)
 }
 
 func (w *ReplicationWorker) retryDelay(attemptCount int) time.Duration {
-	base := w.config.Internal.Replication.RetryBackoffBase
-	maxDelay := w.config.Internal.Replication.MaxRetryBackoff
+	base := w.config.Replication.RetryBackoffBase
+	maxDelay := w.config.Replication.MaxRetryBackoff
 	if attemptCount <= 0 {
 		return base
 	}

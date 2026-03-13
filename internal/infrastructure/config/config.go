@@ -6,16 +6,16 @@ import (
 
 // Config 应用配置
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	Database DatabaseConfig `yaml:"database"` // 新增
-	Node     NodeConfig     `yaml:"node"`
-	Internal InternalConfig `yaml:"internal"`
-	WebDAV   WebDAVConfig   `yaml:"webdav"`
-	Web3     Web3Config     `yaml:"web3"`
-	Email    EmailConfig    `yaml:"email"`
-	Security SecurityConfig `yaml:"security"`
-	CORS     CORSConfig     `yaml:"cors"`
-	Log      LogConfig      `yaml:"log"`
+	Server      ServerConfig      `yaml:"server"`
+	Database    DatabaseConfig    `yaml:"database"` // 新增
+	Node        NodeConfig        `yaml:"node"`
+	Replication ReplicationConfig `yaml:"replication"`
+	WebDAV      WebDAVConfig      `yaml:"webdav"`
+	Web3        Web3Config        `yaml:"web3"`
+	Email       EmailConfig       `yaml:"email"`
+	Security    SecurityConfig    `yaml:"security"`
+	CORS        CORSConfig        `yaml:"cors"`
+	Log         LogConfig         `yaml:"log"`
 }
 
 // DatabaseConfig 数据库配置
@@ -52,16 +52,9 @@ type NodeConfig struct {
 	AdvertiseURL string `yaml:"advertise_url"`
 }
 
-// InternalConfig 内部服务通信配置
-type InternalConfig struct {
-	Replication InternalReplicationConfig `yaml:"replication"`
-}
-
-// InternalReplicationConfig internal 复制配置
-type InternalReplicationConfig struct {
+// ReplicationConfig active / standby 复制配置
+type ReplicationConfig struct {
 	Enabled          bool          `yaml:"enabled"`
-	PeerNodeID       string        `yaml:"peer_node_id"`
-	PeerBaseURL      string        `yaml:"peer_base_url"`
 	SharedSecret     string        `yaml:"shared_secret"`
 	AllowedClockSkew time.Duration `yaml:"allowed_clock_skew"`
 	DispatchInterval time.Duration `yaml:"dispatch_interval"`
@@ -174,16 +167,14 @@ func DefaultConfig() *Config {
 		Node: NodeConfig{
 			Role: "active",
 		},
-		Internal: InternalConfig{
-			Replication: InternalReplicationConfig{
-				Enabled:          false,
-				AllowedClockSkew: 30 * time.Second,
-				DispatchInterval: 2 * time.Second,
-				RequestTimeout:   30 * time.Second,
-				BatchSize:        32,
-				RetryBackoffBase: 2 * time.Second,
-				MaxRetryBackoff:  5 * time.Minute,
-			},
+		Replication: ReplicationConfig{
+			Enabled:          false,
+			AllowedClockSkew: 30 * time.Second,
+			DispatchInterval: 2 * time.Second,
+			RequestTimeout:   30 * time.Second,
+			BatchSize:        32,
+			RetryBackoffBase: 2 * time.Second,
+			MaxRetryBackoff:  5 * time.Minute,
 		},
 		WebDAV: WebDAVConfig{
 			Prefix:              "/dav",

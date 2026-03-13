@@ -50,8 +50,7 @@ func TestInternalReplicationHandleFSApplyEnsureDir(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-b"
 	cfg.Node.Role = "standby"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-a"
+	cfg.Replication.Enabled = true
 	cfg.WebDAV.Directory = root
 
 	handler := NewInternalReplicationHandler(cfg, zap.NewNop(), nil, offsets, nil, nil, nil)
@@ -91,8 +90,7 @@ func TestInternalReplicationHandleFSApplyRejectsSequenceGap(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-b"
 	cfg.Node.Role = "standby"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-a"
+	cfg.Replication.Enabled = true
 	cfg.WebDAV.Directory = root
 
 	handler := NewInternalReplicationHandler(cfg, zap.NewNop(), nil, offsets, nil, nil, nil)
@@ -122,8 +120,7 @@ func TestInternalReplicationHandleFileApplyWritesFileAndUpdatesOffset(t *testing
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-b"
 	cfg.Node.Role = "standby"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-a"
+	cfg.Replication.Enabled = true
 	cfg.WebDAV.Directory = root
 
 	handler := NewInternalReplicationHandler(cfg, zap.NewNop(), nil, offsets, nil, nil, nil)
@@ -178,8 +175,7 @@ func TestInternalReplicationHandleFileApplyAlreadyApplied(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-b"
 	cfg.Node.Role = "standby"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-a"
+	cfg.Replication.Enabled = true
 	cfg.WebDAV.Directory = root
 
 	handler := NewInternalReplicationHandler(cfg, zap.NewNop(), nil, offsets, nil, nil, nil)
@@ -223,7 +219,7 @@ func TestInternalReplicationHandleFSApplyRejectsUninitializedGenerationFence(t *
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-b"
 	cfg.Node.Role = "standby"
-	cfg.Internal.Replication.Enabled = true
+	cfg.Replication.Enabled = true
 	cfg.WebDAV.Directory = root
 
 	assignmentGeneration := int64(2)

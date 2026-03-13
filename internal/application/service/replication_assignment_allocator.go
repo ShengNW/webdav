@@ -59,7 +59,7 @@ func (a *ReplicationAssignmentAllocator) Enabled() bool {
 	if a == nil || a.config == nil {
 		return false
 	}
-	return a.config.Internal.Replication.Enabled &&
+	return a.config.Replication.Enabled &&
 		strings.EqualFold(strings.TrimSpace(a.config.Node.Role), "active") &&
 		strings.TrimSpace(a.config.Node.ID) != ""
 }
@@ -76,7 +76,6 @@ func (a *ReplicationAssignmentAllocator) Run(ctx context.Context) {
 	if a.logger != nil {
 		a.logger.Info("replication assignment allocator started",
 			zap.String("active_node_id", a.config.Node.ID),
-			zap.String("configured_peer_node_id", strings.TrimSpace(a.config.Internal.Replication.PeerNodeID)),
 			zap.Duration("renew_interval", a.renewInterval),
 			zap.Duration("lease_duration", a.leaseDuration))
 		defer a.logger.Info("replication assignment allocator stopped",
@@ -186,10 +185,6 @@ func (a *ReplicationAssignmentAllocator) selectTargetStandby(ctx context.Context
 	}
 	if len(healthyStandbys) == 0 {
 		return nil, nil
-	}
-
-	if configuredPeerNodeID := strings.TrimSpace(a.config.Internal.Replication.PeerNodeID); configuredPeerNodeID != "" {
-		return healthyByID[configuredPeerNodeID], nil
 	}
 
 	currentAssignments, err := a.assignments.ListEffectiveByActive(ctx, strings.TrimSpace(a.config.Node.ID))

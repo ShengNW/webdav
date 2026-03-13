@@ -72,8 +72,7 @@ func TestMutationRecorderUpsertFile(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-b"
+	cfg.Replication.Enabled = true
 	cfg.WebDAV.Directory = root
 	generation := int64(7)
 
@@ -120,8 +119,7 @@ func TestMutationRecorderMoveCopyRemoveAndEnsureDir(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-b"
+	cfg.Replication.Enabled = true
 	cfg.WebDAV.Directory = root
 	generation := int64(9)
 
@@ -171,8 +169,7 @@ func TestMutationRecorderRejectsPathOutsideRoot(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-b"
+	cfg.Replication.Enabled = true
 	cfg.WebDAV.Directory = root
 
 	recorder := NewMutationRecorder(cfg, repo, fakeMutationRecorderResolver{

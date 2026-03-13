@@ -39,7 +39,7 @@ func (r *NodeHeartbeatRegistrar) Enabled() bool {
 	if r == nil || r.config == nil {
 		return false
 	}
-	return r.config.Internal.Replication.Enabled &&
+	return r.config.Replication.Enabled &&
 		strings.TrimSpace(r.config.Node.ID) != "" &&
 		strings.TrimSpace(r.config.Node.AdvertiseURL) != ""
 }

@@ -106,46 +106,40 @@ func (l *Loader) overrideFromEnv(config *Config) {
 	if v := os.Getenv("WEBDAV_NODE_ADVERTISE_URL"); v != "" {
 		config.Node.AdvertiseURL = v
 	}
-	if v := os.Getenv("WEBDAV_INTERNAL_REPLICATION_ENABLED"); v != "" {
-		config.Internal.Replication.Enabled = parseEnvBool(v)
+	if v := os.Getenv("WEBDAV_REPLICATION_ENABLED"); v != "" {
+		config.Replication.Enabled = parseEnvBool(v)
 	}
-	if v := os.Getenv("WEBDAV_INTERNAL_REPLICATION_PEER_NODE_ID"); v != "" {
-		config.Internal.Replication.PeerNodeID = v
+	if v := os.Getenv("WEBDAV_REPLICATION_SHARED_SECRET"); v != "" {
+		config.Replication.SharedSecret = v
 	}
-	if v := os.Getenv("WEBDAV_INTERNAL_REPLICATION_PEER_BASE_URL"); v != "" {
-		config.Internal.Replication.PeerBaseURL = v
-	}
-	if v := os.Getenv("WEBDAV_INTERNAL_REPLICATION_SHARED_SECRET"); v != "" {
-		config.Internal.Replication.SharedSecret = v
-	}
-	if v := os.Getenv("WEBDAV_INTERNAL_REPLICATION_ALLOWED_CLOCK_SKEW"); v != "" {
+	if v := os.Getenv("WEBDAV_REPLICATION_ALLOWED_CLOCK_SKEW"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
-			config.Internal.Replication.AllowedClockSkew = d
+			config.Replication.AllowedClockSkew = d
 		}
 	}
-	if v := os.Getenv("WEBDAV_INTERNAL_REPLICATION_DISPATCH_INTERVAL"); v != "" {
+	if v := os.Getenv("WEBDAV_REPLICATION_DISPATCH_INTERVAL"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
-			config.Internal.Replication.DispatchInterval = d
+			config.Replication.DispatchInterval = d
 		}
 	}
-	if v := os.Getenv("WEBDAV_INTERNAL_REPLICATION_REQUEST_TIMEOUT"); v != "" {
+	if v := os.Getenv("WEBDAV_REPLICATION_REQUEST_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
-			config.Internal.Replication.RequestTimeout = d
+			config.Replication.RequestTimeout = d
 		}
 	}
-	if v := os.Getenv("WEBDAV_INTERNAL_REPLICATION_BATCH_SIZE"); v != "" {
+	if v := os.Getenv("WEBDAV_REPLICATION_BATCH_SIZE"); v != "" {
 		if size, err := strconv.Atoi(v); err == nil {
-			config.Internal.Replication.BatchSize = size
+			config.Replication.BatchSize = size
 		}
 	}
-	if v := os.Getenv("WEBDAV_INTERNAL_REPLICATION_RETRY_BACKOFF_BASE"); v != "" {
+	if v := os.Getenv("WEBDAV_REPLICATION_RETRY_BACKOFF_BASE"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
-			config.Internal.Replication.RetryBackoffBase = d
+			config.Replication.RetryBackoffBase = d
 		}
 	}
-	if v := os.Getenv("WEBDAV_INTERNAL_REPLICATION_MAX_RETRY_BACKOFF"); v != "" {
+	if v := os.Getenv("WEBDAV_REPLICATION_MAX_RETRY_BACKOFF"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
-			config.Internal.Replication.MaxRetryBackoff = d
+			config.Replication.MaxRetryBackoff = d
 		}
 	}
 	if v := os.Getenv("WEBDAV_PREFIX"); v != "" {
@@ -278,8 +272,8 @@ func (l *Loader) validate(config *Config) error {
 	if err := l.validateNode(config); err != nil {
 		return fmt.Errorf("node config: %w", err)
 	}
-	if err := l.validateInternal(config); err != nil {
-		return fmt.Errorf("internal config: %w", err)
+	if err := l.validateReplication(config); err != nil {
+		return fmt.Errorf("replication config: %w", err)
 	}
 	if err := l.validateWebDAV(config); err != nil {
 		return fmt.Errorf("webdav config: %w", err)
@@ -321,50 +315,36 @@ func (l *Loader) validateNode(config *Config) error {
 	return nil
 }
 
-func (l *Loader) validateInternal(config *Config) error {
-	replication := &config.Internal.Replication
-	replication.PeerNodeID = strings.TrimSpace(replication.PeerNodeID)
-	replication.PeerBaseURL = strings.TrimSpace(replication.PeerBaseURL)
+func (l *Loader) validateReplication(config *Config) error {
+	replication := &config.Replication
 	replication.SharedSecret = strings.TrimSpace(replication.SharedSecret)
 
 	if !replication.Enabled {
 		return nil
 	}
 	if config.Node.ID == "" {
-		return errors.New("node.id is required when internal replication is enabled")
+		return errors.New("node.id is required when replication is enabled")
 	}
 	if replication.SharedSecret == "" {
-		return errors.New("internal.replication.shared_secret is required when internal replication is enabled")
+		return errors.New("replication.shared_secret is required when replication is enabled")
 	}
 	if replication.AllowedClockSkew <= 0 {
-		return errors.New("internal.replication.allowed_clock_skew must be greater than zero")
+		return errors.New("replication.allowed_clock_skew must be greater than zero")
 	}
 	if replication.DispatchInterval <= 0 {
-		return errors.New("internal.replication.dispatch_interval must be greater than zero")
+		return errors.New("replication.dispatch_interval must be greater than zero")
 	}
 	if replication.RequestTimeout <= 0 {
-		return errors.New("internal.replication.request_timeout must be greater than zero")
+		return errors.New("replication.request_timeout must be greater than zero")
 	}
 	if replication.BatchSize <= 0 {
-		return errors.New("internal.replication.batch_size must be greater than zero")
+		return errors.New("replication.batch_size must be greater than zero")
 	}
 	if replication.RetryBackoffBase <= 0 {
-		return errors.New("internal.replication.retry_backoff_base must be greater than zero")
+		return errors.New("replication.retry_backoff_base must be greater than zero")
 	}
 	if replication.MaxRetryBackoff < replication.RetryBackoffBase {
-		return errors.New("internal.replication.max_retry_backoff must be greater than or equal to retry_backoff_base")
-	}
-	if replication.PeerBaseURL != "" {
-		parsed, err := url.Parse(replication.PeerBaseURL)
-		if err != nil {
-			return fmt.Errorf("invalid internal.replication.peer_base_url: %w", err)
-		}
-		if parsed.Scheme == "" || parsed.Host == "" {
-			return errors.New("internal.replication.peer_base_url must include scheme and host")
-		}
-	}
-	if replication.PeerBaseURL != "" && replication.PeerNodeID == "" {
-		return errors.New("internal.replication.peer_node_id is required when peer_base_url is configured")
+		return errors.New("replication.max_retry_backoff must be greater than or equal to retry_backoff_base")
 	}
 
 	return nil

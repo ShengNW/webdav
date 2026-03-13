@@ -120,10 +120,9 @@ func TestReplicationWorkerDispatchOnce(t *testing.T) {
 	standbyCfg := config.DefaultConfig()
 	standbyCfg.Node.ID = "node-b"
 	standbyCfg.Node.Role = "standby"
-	standbyCfg.Internal.Replication.Enabled = true
-	standbyCfg.Internal.Replication.PeerNodeID = "node-a"
-	standbyCfg.Internal.Replication.SharedSecret = "shared-secret"
-	standbyCfg.Internal.Replication.AllowedClockSkew = time.Minute
+	standbyCfg.Replication.Enabled = true
+	standbyCfg.Replication.SharedSecret = "shared-secret"
+	standbyCfg.Replication.AllowedClockSkew = time.Minute
 	standbyCfg.WebDAV.Directory = standbyRoot
 	server := newStandbyTestServer(t, standbyCfg)
 	defer server.Close()
@@ -157,16 +156,14 @@ func TestReplicationWorkerDispatchOnce(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-b"
-	cfg.Internal.Replication.PeerBaseURL = server.URL
-	cfg.Internal.Replication.SharedSecret = "shared-secret"
-	cfg.Internal.Replication.AllowedClockSkew = time.Minute
-	cfg.Internal.Replication.DispatchInterval = time.Second
-	cfg.Internal.Replication.RequestTimeout = 5 * time.Second
-	cfg.Internal.Replication.BatchSize = 10
-	cfg.Internal.Replication.RetryBackoffBase = time.Second
-	cfg.Internal.Replication.MaxRetryBackoff = time.Minute
+	cfg.Replication.Enabled = true
+	cfg.Replication.SharedSecret = "shared-secret"
+	cfg.Replication.AllowedClockSkew = time.Minute
+	cfg.Replication.DispatchInterval = time.Second
+	cfg.Replication.RequestTimeout = 5 * time.Second
+	cfg.Replication.BatchSize = 10
+	cfg.Replication.RetryBackoffBase = time.Second
+	cfg.Replication.MaxRetryBackoff = time.Minute
 	cfg.WebDAV.Directory = activeRoot
 
 	worker := NewReplicationWorker(cfg, outbox, fakeWorkerResolver{
@@ -218,16 +215,14 @@ func TestReplicationWorkerMarksFailedAndStopsBatch(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-b"
-	cfg.Internal.Replication.PeerBaseURL = server.URL
-	cfg.Internal.Replication.SharedSecret = "shared-secret"
-	cfg.Internal.Replication.AllowedClockSkew = time.Minute
-	cfg.Internal.Replication.DispatchInterval = time.Second
-	cfg.Internal.Replication.RequestTimeout = 5 * time.Second
-	cfg.Internal.Replication.BatchSize = 10
-	cfg.Internal.Replication.RetryBackoffBase = time.Second
-	cfg.Internal.Replication.MaxRetryBackoff = time.Minute
+	cfg.Replication.Enabled = true
+	cfg.Replication.SharedSecret = "shared-secret"
+	cfg.Replication.AllowedClockSkew = time.Minute
+	cfg.Replication.DispatchInterval = time.Second
+	cfg.Replication.RequestTimeout = 5 * time.Second
+	cfg.Replication.BatchSize = 10
+	cfg.Replication.RetryBackoffBase = time.Second
+	cfg.Replication.MaxRetryBackoff = time.Minute
 	cfg.WebDAV.Directory = t.TempDir()
 
 	worker := NewReplicationWorker(cfg, outbox, fakeWorkerResolver{
@@ -265,16 +260,14 @@ func TestReplicationWorkerRetryDelayCapsAtMax(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "node-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-b"
-	cfg.Internal.Replication.PeerBaseURL = "http://example.internal"
-	cfg.Internal.Replication.SharedSecret = "shared-secret"
-	cfg.Internal.Replication.AllowedClockSkew = time.Minute
-	cfg.Internal.Replication.DispatchInterval = time.Second
-	cfg.Internal.Replication.RequestTimeout = 5 * time.Second
-	cfg.Internal.Replication.BatchSize = 10
-	cfg.Internal.Replication.RetryBackoffBase = time.Second
-	cfg.Internal.Replication.MaxRetryBackoff = 8 * time.Second
+	cfg.Replication.Enabled = true
+	cfg.Replication.SharedSecret = "shared-secret"
+	cfg.Replication.AllowedClockSkew = time.Minute
+	cfg.Replication.DispatchInterval = time.Second
+	cfg.Replication.RequestTimeout = 5 * time.Second
+	cfg.Replication.BatchSize = 10
+	cfg.Replication.RetryBackoffBase = time.Second
+	cfg.Replication.MaxRetryBackoff = 8 * time.Second
 
 	worker := NewReplicationWorker(cfg, &fakeWorkerOutboxRepository{}, fakeWorkerResolver{
 		peer: &ResolvedReplicationPeer{
@@ -304,7 +297,7 @@ func TestReplicationWorkerRetryDelayCapsAtMax(t *testing.T) {
 
 func newStandbyTestServer(t *testing.T, cfg *config.Config) *httptest.Server {
 	t.Helper()
-	internalAuth := middleware.NewInternalAuthMiddleware(cfg.Internal.Replication, zap.NewNop())
+	internalAuth := middleware.NewInternalAuthMiddleware(cfg.Replication, zap.NewNop())
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/internal/replication/fs/apply", internalAuth.Handle(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req fsApplyRequest

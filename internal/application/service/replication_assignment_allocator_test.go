@@ -119,60 +119,12 @@ func (r *fakeAllocatorAssignmentRepository) ReleaseByActiveExcept(_ context.Cont
 	return nil
 }
 
-func TestReplicationAssignmentAllocatorSyncOnceConfiguredPeer(t *testing.T) {
-	now := time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC)
-	cfg := config.DefaultConfig()
-	cfg.Node.ID = "active-a"
-	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "standby-b"
-
-	nodes := &fakeAllocatorNodeRepository{
-		nodesByRole: map[string][]*cluster.Node{
-			"standby": {
-				{NodeID: "standby-a", Role: "standby", AdvertiseURL: "http://standby-a", LastHeartbeatAt: now},
-				{NodeID: "standby-b", Role: "standby", AdvertiseURL: "http://standby-b", LastHeartbeatAt: now},
-			},
-		},
-	}
-	assignments := &fakeAllocatorAssignmentRepository{
-		effectiveAssignments: []*cluster.ReplicationAssignment{
-			{ActiveNodeID: "active-a", StandbyNodeID: "standby-a", State: cluster.AssignmentStateReplicating},
-		},
-	}
-
-	allocator := NewReplicationAssignmentAllocator(cfg, nodes, assignments, zap.NewNop())
-	allocator.now = func() time.Time { return now }
-
-	if err := allocator.SyncOnce(context.Background()); err != nil {
-		t.Fatalf("SyncOnce: %v", err)
-	}
-	if assignments.listEffectiveByActiveID != "" {
-		t.Fatalf("expected configured peer path to avoid current assignment lookup, got %q", assignments.listEffectiveByActiveID)
-	}
-	if len(assignments.upserted) != 1 {
-		t.Fatalf("expected 1 upsert, got %d", len(assignments.upserted))
-	}
-	if assignments.upserted[0].StandbyNodeID != "standby-b" {
-		t.Fatalf("unexpected upserted standby: %#v", assignments.upserted[0])
-	}
-	if assignments.upserted[0].State != cluster.AssignmentStatePending {
-		t.Fatalf("expected new configured assignment to start pending, got %#v", assignments.upserted[0])
-	}
-	if len(assignments.releaseKeepStandbyIDs) != 1 || assignments.releaseKeepStandbyIDs[0] != "standby-b" {
-		t.Fatalf("unexpected release keep set: %#v", assignments.releaseKeepStandbyIDs)
-	}
-	if assignments.releaseActiveNodeID != "active-a" {
-		t.Fatalf("unexpected release active node id: %q", assignments.releaseActiveNodeID)
-	}
-}
-
 func TestReplicationAssignmentAllocatorSyncOnceKeepsCurrentHealthyStandby(t *testing.T) {
 	now := time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC)
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "active-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
+	cfg.Replication.Enabled = true
 
 	nodes := &fakeAllocatorNodeRepository{
 		nodesByRole: map[string][]*cluster.Node{
@@ -213,7 +165,7 @@ func TestReplicationAssignmentAllocatorSyncOnceSelectsFreshHealthyStandby(t *tes
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "active-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
+	cfg.Replication.Enabled = true
 
 	nodes := &fakeAllocatorNodeRepository{
 		nodesByRole: map[string][]*cluster.Node{
@@ -247,7 +199,7 @@ func TestReplicationAssignmentAllocatorSyncOnceRecoversErrorStateOnStartup(t *te
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "active-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
+	cfg.Replication.Enabled = true
 
 	nodes := &fakeAllocatorNodeRepository{
 		nodesByRole: map[string][]*cluster.Node{
@@ -289,7 +241,7 @@ func TestReplicationAssignmentAllocatorSyncOncePreservesErrorStateAfterStartupRe
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "active-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
+	cfg.Replication.Enabled = true
 
 	nodes := &fakeAllocatorNodeRepository{
 		nodesByRole: map[string][]*cluster.Node{
@@ -329,7 +281,7 @@ func TestReplicationAssignmentAllocatorSyncOnceReleasesWhenNoHealthyStandby(t *t
 	cfg := config.DefaultConfig()
 	cfg.Node.ID = "active-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
+	cfg.Replication.Enabled = true
 
 	nodes := &fakeAllocatorNodeRepository{
 		nodesByRole: map[string][]*cluster.Node{

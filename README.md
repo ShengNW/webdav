@@ -62,7 +62,7 @@ build/warehouse ha bootstrap mark -c config.yaml --peer --outbox-id 123
 
 说明：
 - CLI 会自动根据 `config.yaml` 构造 internal 签名请求，不需要手工写 `curl`、shell 脚本或 HMAC header
-- 默认访问当前实例的 internal 地址；传 `--peer` 时会优先访问 `internal.replication.peer_base_url`，为空时再从 PostgreSQL 控制面解析当前 effective assignment 对应的 peer
+- 默认访问当前实例的 internal 地址；传 `--peer` 时会从 PostgreSQL 控制面解析当前 effective assignment 对应的 peer
 - 也可以通过 `--base-url` 显式指定目标实例
 - `bootstrap mark` 现在要求携带当前 assignment generation；优先使用 `--peer`，CLI 会自动补齐内部 header
 - `build/warehouse ha assignments status` 直接读取 PostgreSQL 控制面表，不走 HTTP；当前可以直接观察 active 侧 assignment allocator 写入的 lease / generation / state
@@ -198,11 +198,10 @@ bash scripts/local.sh standby
 - 数据目录分别使用 `.tmp/active/data` 和 `.tmp/standby/data`
 - 默认端口为 `6065`（active）和 `6066`（standby）
 - `.tmp/` 已加入 `.gitignore`
-- 只覆盖本地双实例必需字段：端口、节点身份、internal replication 和数据目录
+- 只覆盖本地双实例必需字段：端口、节点身份、replication 和数据目录
 - 同时会自动补齐 `node.advertise_url`，让 active / standby 通过共享控制面自动发现彼此
 - 可通过环境变量覆盖本地端口和 internal shared secret，例如 `ACTIVE_PORT`、`STANDBY_PORT`、`INTERNAL_SHARED_SECRET`
-- active / standby 的 `internal.replication.peer_base_url` 默认都可以为空；运行时复制会优先按 effective assignment 解析 peer，再通过 `cluster_nodes` 中的 `advertise_url` 补齐目标 URL
-- 单 standby 场景仍建议保留 `internal.replication.peer_node_id`，作为 allocator 续租与显式 CLI 的稳定锚点
+- active / standby 不再配置静态 `peer_node_id` / `peer_base_url`；运行时复制统一按 effective assignment 解析 peer，再通过 `cluster_nodes` 中的 `advertise_url` 补齐目标 URL
 - standby 的 internal apply / reconcile / bootstrap 请求会校验当前 effective assignment，只接受当前 assigned active
 
 ## 高可用部署提示

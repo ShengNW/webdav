@@ -330,18 +330,16 @@ func printStartupInfo(c *container.Container) {
 		zap.Int("port", c.Config.Database.Port),
 		zap.String("database", c.Config.Database.Database))
 
-	// 节点与内部复制信息
+	// 节点与复制信息
 	c.Logger.Info("node",
 		zap.String("id", c.Config.Node.ID),
 		zap.String("role", c.Config.Node.Role),
 		zap.String("advertise_url", c.Config.Node.AdvertiseURL))
-	c.Logger.Info("internal_replication",
-		zap.Bool("enabled", c.Config.Internal.Replication.Enabled),
-		zap.String("peer_node_id", c.Config.Internal.Replication.PeerNodeID),
-		zap.String("peer_base_url", c.Config.Internal.Replication.PeerBaseURL),
-		zap.Duration("dispatch_interval", c.Config.Internal.Replication.DispatchInterval),
-		zap.Duration("request_timeout", c.Config.Internal.Replication.RequestTimeout),
-		zap.Int("batch_size", c.Config.Internal.Replication.BatchSize),
+	c.Logger.Info("replication",
+		zap.Bool("enabled", c.Config.Replication.Enabled),
+		zap.Duration("dispatch_interval", c.Config.Replication.DispatchInterval),
+		zap.Duration("request_timeout", c.Config.Replication.RequestTimeout),
+		zap.Int("batch_size", c.Config.Replication.BatchSize),
 		zap.Bool("worker_enabled", c.ReplicationWorker != nil && c.ReplicationWorker.Enabled()))
 
 	// Web3 信息

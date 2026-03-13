@@ -48,7 +48,7 @@ require_command() {
 render_config() {
   local role="$1"
   local output_path="$2"
-  local node_id node_role port advertise_url peer_node_id peer_base_url data_dir
+  local node_id node_role port advertise_url data_dir
 
   case "$role" in
     active)
@@ -56,8 +56,6 @@ render_config() {
       node_role="active"
       port="${ACTIVE_PORT}"
       advertise_url="http://127.0.0.1:${ACTIVE_PORT}"
-      peer_node_id="warehouse-standby"
-      peer_base_url=""
       data_dir="${TMP_DIR}/active/data"
       ;;
     standby)
@@ -65,8 +63,6 @@ render_config() {
       node_role="standby"
       port="${STANDBY_PORT}"
       advertise_url="http://127.0.0.1:${STANDBY_PORT}"
-      peer_node_id="warehouse-active"
-      peer_base_url=""
       data_dir="${TMP_DIR}/standby/data"
       ;;
     *)
@@ -84,45 +80,32 @@ render_config() {
     -v node_id="${node_id}" \
     -v node_role="${node_role}" \
     -v advertise_url="${advertise_url}" \
-    -v peer_node_id="${peer_node_id}" \
-    -v peer_base_url="${peer_base_url}" \
     -v shared_secret="${INTERNAL_SHARED_SECRET}" \
     -v data_dir="${data_dir}" \
     '
     BEGIN {
       section = ""
-      subsection = ""
     }
     /^[A-Za-z0-9_-]+:$/ {
       section = ""
-      subsection = ""
     }
     /^server:$/ {
       section = "server"
-      subsection = ""
       print
       next
     }
     /^node:$/ {
       section = "node"
-      subsection = ""
       print
       next
     }
-    /^internal:$/ {
-      section = "internal"
-      subsection = ""
-      print
-      next
-    }
-    /^  replication:$/ && section == "internal" {
-      subsection = "replication"
+    /^replication:$/ {
+      section = "replication"
       print
       next
     }
     /^webdav:$/ {
       section = "webdav"
-      subsection = ""
       print
       next
     }
@@ -146,36 +129,28 @@ render_config() {
       print "  advertise_url: \"" advertise_url "\""
       next
     }
-    section == "internal" && subsection == "replication" && $1 == "enabled:" {
-      print "    enabled: true"
+    section == "replication" && $1 == "enabled:" {
+      print "  enabled: true"
       next
     }
-    section == "internal" && subsection == "replication" && $1 == "peer_node_id:" {
-      print "    peer_node_id: \"" peer_node_id "\""
+    section == "replication" && $1 == "shared_secret:" {
+      print "  shared_secret: \"" shared_secret "\""
       next
     }
-    section == "internal" && subsection == "replication" && $1 == "peer_base_url:" {
-      print "    peer_base_url: \"" peer_base_url "\""
+    section == "replication" && $1 == "dispatch_interval:" {
+      print "  dispatch_interval: 1s"
       next
     }
-    section == "internal" && subsection == "replication" && $1 == "shared_secret:" {
-      print "    shared_secret: \"" shared_secret "\""
+    section == "replication" && $1 == "request_timeout:" {
+      print "  request_timeout: 10s"
       next
     }
-    section == "internal" && subsection == "replication" && $1 == "dispatch_interval:" {
-      print "    dispatch_interval: 1s"
+    section == "replication" && $1 == "retry_backoff_base:" {
+      print "  retry_backoff_base: 1s"
       next
     }
-    section == "internal" && subsection == "replication" && $1 == "request_timeout:" {
-      print "    request_timeout: 10s"
-      next
-    }
-    section == "internal" && subsection == "replication" && $1 == "retry_backoff_base:" {
-      print "    retry_backoff_base: 1s"
-      next
-    }
-    section == "internal" && subsection == "replication" && $1 == "max_retry_backoff:" {
-      print "    max_retry_backoff: 10s"
+    section == "replication" && $1 == "max_retry_backoff:" {
+      print "  max_retry_backoff: 10s"
       next
     }
     section == "webdav" && $1 == "directory:" {

@@ -31,19 +31,16 @@ node:
   role: "active" # active or standby
   advertise_url: "" # 当前节点对其他实例暴露的 internal 基地址，例如 http://127.0.0.1:6065
 
-# Internal Replication Configuration
-internal:
-  replication:
-    enabled: false
-    peer_node_id: ""   # 单 active + 单 standby 时建议填写，便于 active 稳定记账到固定 standby
-    peer_base_url: ""  # 可留空；若为空，active 会优先从 PostgreSQL 的 cluster_nodes 注册表发现 peer URL
-    shared_secret: ""
-    allowed_clock_skew: 30s
-    dispatch_interval: 2s
-    request_timeout: 30s
-    batch_size: 32
-    retry_backoff_base: 2s
-    max_retry_backoff: 5m
+# Replication Configuration
+replication:
+  enabled: false
+  shared_secret: ""      # active / standby 之间 internal 调用使用的共享密钥
+  allowed_clock_skew: 30s
+  dispatch_interval: 2s
+  request_timeout: 30s
+  batch_size: 32
+  retry_backoff_base: 2s
+  max_retry_backoff: 5m
 
 # WebDAV Configuration
 webdav:

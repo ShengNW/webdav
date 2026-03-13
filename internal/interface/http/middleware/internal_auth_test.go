@@ -12,7 +12,7 @@ import (
 
 func TestInternalAuthMiddlewareAllowsValidRequest(t *testing.T) {
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
-	cfg := config.InternalReplicationConfig{
+	cfg := config.ReplicationConfig{
 		Enabled:          true,
 		SharedSecret:     "shared-secret",
 		AllowedClockSkew: time.Minute,
@@ -62,7 +62,7 @@ func TestInternalAuthMiddlewareAllowsValidRequest(t *testing.T) {
 
 func TestInternalAuthMiddlewareRejectsStaleTimestamp(t *testing.T) {
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
-	cfg := config.InternalReplicationConfig{
+	cfg := config.ReplicationConfig{
 		Enabled:          true,
 		SharedSecret:     "shared-secret",
 		AllowedClockSkew: time.Minute,
@@ -90,7 +90,7 @@ func TestInternalAuthMiddlewareRejectsStaleTimestamp(t *testing.T) {
 
 func TestInternalAuthMiddlewareRejectsBadSignature(t *testing.T) {
 	now := time.Date(2026, 3, 8, 12, 0, 0, 0, time.UTC)
-	cfg := config.InternalReplicationConfig{
+	cfg := config.ReplicationConfig{
 		Enabled:          true,
 		SharedSecret:     "shared-secret",
 		AllowedClockSkew: time.Minute,

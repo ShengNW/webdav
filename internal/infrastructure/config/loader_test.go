@@ -35,71 +35,67 @@ func TestValidateWebDAVRequireExistingDirectory(t *testing.T) {
 	}
 }
 
-func TestValidateInternalReplicationRequiresNodeIDAndSecret(t *testing.T) {
+func TestValidateReplicationRequiresNodeIDAndSecret(t *testing.T) {
 	loader := NewLoader()
 	cfg := DefaultConfig()
-	cfg.Internal.Replication.Enabled = true
+	cfg.Replication.Enabled = true
 
 	if err := loader.validateNode(cfg); err != nil {
 		t.Fatalf("validateNode failed: %v", err)
 	}
-	if err := loader.validateInternal(cfg); err == nil {
-		t.Fatalf("expected error when internal replication is enabled without node id and shared secret")
+	if err := loader.validateReplication(cfg); err == nil {
+		t.Fatalf("expected error when replication is enabled without node id and shared secret")
 	}
 }
 
-func TestValidateInternalReplicationAcceptsStandbyRole(t *testing.T) {
+func TestValidateReplicationAcceptsStandbyRole(t *testing.T) {
 	loader := NewLoader()
 	cfg := DefaultConfig()
 	cfg.Node.ID = "node-b"
 	cfg.Node.Role = "standby"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-a"
-	cfg.Internal.Replication.SharedSecret = "secret"
-	cfg.Internal.Replication.AllowedClockSkew = time.Minute
-	cfg.Internal.Replication.PeerBaseURL = "https://peer.internal"
+	cfg.Replication.Enabled = true
+	cfg.Replication.SharedSecret = "secret"
+	cfg.Replication.AllowedClockSkew = time.Minute
 
 	if err := loader.validateNode(cfg); err != nil {
 		t.Fatalf("expected standby role to be accepted, got: %v", err)
 	}
-	if err := loader.validateInternal(cfg); err != nil {
-		t.Fatalf("expected internal replication config to be valid, got: %v", err)
+	if err := loader.validateReplication(cfg); err != nil {
+		t.Fatalf("expected replication config to be valid, got: %v", err)
 	}
 }
 
-func TestValidateInternalReplicationActiveAllowsDynamicPeerDiscovery(t *testing.T) {
+func TestValidateReplicationActiveAllowsDynamicPeerDiscovery(t *testing.T) {
 	loader := NewLoader()
 	cfg := DefaultConfig()
 	cfg.Node.ID = "node-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.SharedSecret = "secret"
-	cfg.Internal.Replication.AllowedClockSkew = time.Minute
+	cfg.Replication.Enabled = true
+	cfg.Replication.SharedSecret = "secret"
+	cfg.Replication.AllowedClockSkew = time.Minute
 
 	if err := loader.validateNode(cfg); err != nil {
 		t.Fatalf("validateNode failed: %v", err)
 	}
-	if err := loader.validateInternal(cfg); err != nil {
+	if err := loader.validateReplication(cfg); err != nil {
 		t.Fatalf("expected dynamic peer discovery config to be valid, got: %v", err)
 	}
 }
 
-func TestValidateInternalReplicationRejectsInvalidWorkerSettings(t *testing.T) {
+func TestValidateReplicationRejectsInvalidWorkerSettings(t *testing.T) {
 	loader := NewLoader()
 	cfg := DefaultConfig()
 	cfg.Node.ID = "node-a"
 	cfg.Node.Role = "active"
-	cfg.Internal.Replication.Enabled = true
-	cfg.Internal.Replication.PeerNodeID = "node-b"
-	cfg.Internal.Replication.PeerBaseURL = "https://peer.internal"
-	cfg.Internal.Replication.SharedSecret = "secret"
-	cfg.Internal.Replication.AllowedClockSkew = time.Minute
-	cfg.Internal.Replication.BatchSize = 0
+	cfg.Replication.Enabled = true
+	cfg.Replication.SharedSecret = "secret"
+	cfg.Replication.AllowedClockSkew = time.Minute
+	cfg.Replication.BatchSize = 0
 
 	if err := loader.validateNode(cfg); err != nil {
 		t.Fatalf("validateNode failed: %v", err)
 	}
-	if err := loader.validateInternal(cfg); err == nil {
+	if err := loader.validateReplication(cfg); err == nil {
 		t.Fatalf("expected invalid worker setting to be rejected")
 	}
 }

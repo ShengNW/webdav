@@ -98,8 +98,6 @@ type internalReplicationStatus struct {
 	Mode                   string     `json:"mode"`
 	State                  string     `json:"state"`
 	WorkerEnabled          bool       `json:"workerEnabled"`
-	PeerNodeID             string     `json:"peerNodeId,omitempty"`
-	PeerBaseURL            string     `json:"peerBaseUrl,omitempty"`
 	ResolvedPeerNodeID     string     `json:"resolvedPeerNodeId,omitempty"`
 	ResolvedPeerBaseURL    string     `json:"resolvedPeerBaseUrl,omitempty"`
 	ResolvedPeerSource     string     `json:"resolvedPeerSource,omitempty"`
@@ -140,7 +138,7 @@ func (h *InternalReplicationHandler) HandleStatus(w http.ResponseWriter, r *http
 		return
 	}
 
-	replicationCfg := h.config.Internal.Replication
+	replicationCfg := h.config.Replication
 	response := internalReplicationStatusResponse{
 		Node: internalNodeStatus{
 			ID:           h.config.Node.ID,
@@ -152,8 +150,6 @@ func (h *InternalReplicationHandler) HandleStatus(w http.ResponseWriter, r *http
 			Mode:          "internal_async",
 			State:         "disabled",
 			WorkerEnabled: h.workerEnabled(),
-			PeerNodeID:    replicationCfg.PeerNodeID,
-			PeerBaseURL:   replicationCfg.PeerBaseURL,
 		},
 	}
 	if !replicationCfg.Enabled {
@@ -292,9 +288,6 @@ func (h *InternalReplicationHandler) HandleReconcileStart(w http.ResponseWriter,
 		return
 	}
 	targetNodeID := strings.TrimSpace(req.TargetNodeID)
-	if targetNodeID == "" {
-		targetNodeID = strings.TrimSpace(h.config.Internal.Replication.PeerNodeID)
-	}
 	resp, err := h.startReconcile(r.Context(), targetNodeID)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, err.Error())
@@ -465,7 +458,7 @@ func (h *InternalReplicationHandler) startReconcile(ctx context.Context, targetN
 			h.recordReconcileAssignmentFailure(ctx, assignment, job.ID, err)
 			return nil, fmt.Errorf("bootstrap mark after reconcile: %w", err)
 		}
-		client := &http.Client{Timeout: h.config.Internal.Replication.RequestTimeout}
+		client := &http.Client{Timeout: h.config.Replication.RequestTimeout}
 		if err := h.sendBootstrapMark(ctx, client, dispatchPeer.BaseURL, *bootstrapGeneration, watermarkOutboxID); err != nil {
 			lastErr := err.Error()
 			_ = h.reconcileStore.UpdateJobResult(
@@ -562,8 +555,8 @@ func (h *InternalReplicationHandler) recordReconcileAssignmentFailure(ctx contex
 }
 
 func (h *InternalReplicationHandler) replicationPair(peer *service.ResolvedReplicationPeer) (string, string) {
-	peerNodeID := strings.TrimSpace(h.config.Internal.Replication.PeerNodeID)
-	if peer != nil && strings.TrimSpace(peer.NodeID) != "" {
+	peerNodeID := ""
+	if peer != nil {
 		peerNodeID = strings.TrimSpace(peer.NodeID)
 	}
 	if strings.EqualFold(strings.TrimSpace(h.config.Node.Role), "standby") {
@@ -573,7 +566,7 @@ func (h *InternalReplicationHandler) replicationPair(peer *service.ResolvedRepli
 }
 
 func (h *InternalReplicationHandler) workerEnabled() bool {
-	replCfg := h.config.Internal.Replication
+	replCfg := h.config.Replication
 	return replCfg.Enabled &&
 		strings.EqualFold(strings.TrimSpace(h.config.Node.Role), "active")
 }
@@ -639,7 +632,7 @@ func (h *InternalReplicationHandler) buildNotes(status internalReplicationStatus
 			notes = append(notes, "resolved standby peer has no assignment generation; replication dispatch is paused")
 		} else if status.ResolvedPeerBaseURL == "" {
 			notes = append(notes, "resolved standby peer has no usable base url yet")
-		} else if status.ResolvedPeerHealthy != nil && !*status.ResolvedPeerHealthy && strings.TrimSpace(status.PeerBaseURL) == "" {
+		} else if status.ResolvedPeerHealthy != nil && !*status.ResolvedPeerHealthy {
 			notes = append(notes, "resolved standby peer heartbeat is stale, dispatch is paused until it recovers")
 		}
 	case "standby":
@@ -663,20 +656,12 @@ func (h *InternalReplicationHandler) missingResolvedPeerNote(peerRole string) st
 	if h != nil && h.assignments != nil {
 		return fmt.Sprintf("no %s peer resolved from an effective assignment", peerRole)
 	}
-	return fmt.Sprintf("no %s peer resolved from assignment, config, or cluster registry", peerRole)
+	return fmt.Sprintf("no %s peer resolved from cluster registry", peerRole)
 }
 
 func (h *InternalReplicationHandler) resolveTargetPeer(ctx context.Context) (*service.ResolvedReplicationPeer, error) {
 	if h.peerResolver == nil {
-		peerNodeID := strings.TrimSpace(h.config.Internal.Replication.PeerNodeID)
-		if peerNodeID == "" {
-			return nil, nil
-		}
-		return &service.ResolvedReplicationPeer{
-			NodeID:  peerNodeID,
-			BaseURL: strings.TrimSpace(h.config.Internal.Replication.PeerBaseURL),
-			Source:  "config",
-		}, nil
+		return nil, nil
 	}
 	return h.peerResolver.ResolveTarget(ctx)
 }
@@ -684,22 +669,15 @@ func (h *InternalReplicationHandler) resolveTargetPeer(ctx context.Context) (*se
 func (h *InternalReplicationHandler) resolveTargetPeerForNode(ctx context.Context, nodeID string, requireHealthy bool) (*service.ResolvedReplicationPeer, error) {
 	if h.peerResolver == nil {
 		nodeID = strings.TrimSpace(nodeID)
-		configuredNodeID := strings.TrimSpace(h.config.Internal.Replication.PeerNodeID)
-		if nodeID == "" {
-			nodeID = configuredNodeID
-		}
 		if nodeID == "" {
 			return nil, nil
 		}
-		baseURL := strings.TrimSpace(h.config.Internal.Replication.PeerBaseURL)
-		if requireHealthy && baseURL == "" {
+		if requireHealthy {
 			return nil, nil
 		}
 		return &service.ResolvedReplicationPeer{
-			NodeID:  nodeID,
-			BaseURL: baseURL,
-			Source:  "config",
-			Healthy: baseURL != "",
+			NodeID: nodeID,
+			Source: "explicit",
 		}, nil
 	}
 	nodeID = strings.TrimSpace(nodeID)

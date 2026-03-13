@@ -56,7 +56,7 @@ warehouse -c config.yaml
   - `database.*` points to a reachable PostgreSQL instance
   - `webdav.directory` points to the real data directory
   - `web3.jwt_secret` is replaced with a real secret
-  - for stage-1 active/standby, `node.*` and `internal.replication.*` are filled correctly
+  - for stage-1 active/standby, `node.*` and `replication.*` are filled correctly
 
 ### Direct Binary
 

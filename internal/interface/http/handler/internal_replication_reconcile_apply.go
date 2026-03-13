@@ -151,11 +151,11 @@ func (h *InternalReplicationHandler) dispatchReconcilePendingItems(ctx context.C
 		return h.pendingCountSafe(ctx, jobID), fmt.Errorf("reconcile target peer %q has no assignment generation", peer.NodeID)
 	}
 
-	batchSize := h.config.Internal.Replication.BatchSize
+	batchSize := h.config.Replication.BatchSize
 	if batchSize <= 0 {
 		batchSize = 32
 	}
-	client := &http.Client{Timeout: h.config.Internal.Replication.RequestTimeout}
+	client := &http.Client{Timeout: h.config.Replication.RequestTimeout}
 
 	for {
 		items, err := h.reconcileStore.ListPendingItems(ctx, jobID, batchSize)
@@ -252,7 +252,7 @@ func (h *InternalReplicationHandler) signInternalRequest(req *http.Request, payl
 		h.config.Node.ID,
 		timestamp,
 		payloadHash,
-		h.config.Internal.Replication.SharedSecret,
+		h.config.Replication.SharedSecret,
 	))
 }
 

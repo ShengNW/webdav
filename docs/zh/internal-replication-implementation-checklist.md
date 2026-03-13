@@ -12,16 +12,14 @@
   - `node.id`
   - `node.role`（`active` / `standby`）
 - 增加内部复制配置：
-  - `internal.replication.enabled`
-  - `internal.replication.peer_node_id`
-  - `internal.replication.peer_base_url`
-  - `internal.replication.shared_secret` 或 mTLS 配置
+  - `replication.enabled`
+  - `replication.shared_secret` 或 mTLS 配置
   - 重试 / 退避 / 超时参数：
-    - `internal.replication.dispatch_interval`
-    - `internal.replication.request_timeout`
-    - `internal.replication.batch_size`
-    - `internal.replication.retry_backoff_base`
-    - `internal.replication.max_retry_backoff`
+    - `replication.dispatch_interval`
+    - `replication.request_timeout`
+    - `replication.batch_size`
+    - `replication.retry_backoff_base`
+    - `replication.max_retry_backoff`
 - 增加 internal auth middleware
 - 约束 standby 默认不暴露 public/admin 写流量
 

@@ -56,7 +56,7 @@ warehouse -c config.yaml
   - `database.*` 已指向可用的 PostgreSQL
   - `webdav.directory` 已指向真实数据目录
   - `web3.jwt_secret` 已替换为真实密钥
-  - 阶段一 active/standby 场景下，`node.*` 与 `internal.replication.*` 已正确填写
+  - 阶段一 active/standby 场景下，`node.*` 与 `replication.*` 已正确填写
 
 ### 二进制直接部署
 

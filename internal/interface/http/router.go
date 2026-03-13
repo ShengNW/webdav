@@ -173,7 +173,7 @@ func (r *Router) createAdminHandler(handler http.Handler) http.Handler {
 
 // createInternalHandler creates handlers used only for internal service-to-service traffic.
 func (r *Router) createInternalHandler(handler http.Handler) http.Handler {
-	internalMiddleware := middleware.NewInternalAuthMiddleware(r.config.Internal.Replication, r.logger)
+	internalMiddleware := middleware.NewInternalAuthMiddleware(r.config.Replication, r.logger)
 	return internalMiddleware.Handle(handler)
 }
 

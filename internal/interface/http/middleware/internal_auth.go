@@ -14,23 +14,23 @@ import (
 )
 
 const (
-	InternalNodeIDHeader        = "X-Warehouse-Node-Id"
-	InternalTimestampHeader     = "X-Warehouse-Timestamp"
-	InternalSignatureHeader     = "X-Warehouse-Signature"
-	InternalContentSHA256Header = "X-Warehouse-Content-SHA256"
+	InternalNodeIDHeader               = "X-Warehouse-Node-Id"
+	InternalTimestampHeader            = "X-Warehouse-Timestamp"
+	InternalSignatureHeader            = "X-Warehouse-Signature"
+	InternalContentSHA256Header        = "X-Warehouse-Content-SHA256"
 	InternalAssignmentGenerationHeader = "X-Warehouse-Assignment-Generation"
-	unsignedPayloadMarker       = "UNSIGNED-PAYLOAD"
+	unsignedPayloadMarker              = "UNSIGNED-PAYLOAD"
 )
 
 // InternalAuthMiddleware authenticates internal service-to-service requests.
 type InternalAuthMiddleware struct {
-	config config.InternalReplicationConfig
+	config config.ReplicationConfig
 	logger *zap.Logger
 	now    func() time.Time
 }
 
 // NewInternalAuthMiddleware creates a new internal auth middleware.
-func NewInternalAuthMiddleware(cfg config.InternalReplicationConfig, logger *zap.Logger) *InternalAuthMiddleware {
+func NewInternalAuthMiddleware(cfg config.ReplicationConfig, logger *zap.Logger) *InternalAuthMiddleware {
 	return &InternalAuthMiddleware{
 		config: cfg,
 		logger: logger,

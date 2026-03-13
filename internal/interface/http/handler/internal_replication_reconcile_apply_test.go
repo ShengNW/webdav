@@ -21,7 +21,7 @@ func TestInternalReplicationHandleReconcileApplyBatchPreservesMtime(t *testing.T
 	cfg.Node.ID = "node-b"
 	cfg.Node.Role = "standby"
 	cfg.WebDAV.Directory = root
-	cfg.Internal.Replication.Enabled = true
+	cfg.Replication.Enabled = true
 
 	handler := NewInternalReplicationHandler(cfg, zap.NewNop(), nil, newMemoryReplicationOffsetStore(), nil, nil, nil)
 	modifiedAt := time.Date(2025, 3, 1, 12, 30, 45, 0, time.UTC)

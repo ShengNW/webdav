@@ -48,7 +48,7 @@ flowchart LR
 - 只有 active 在 LB 上游池中
 - standby 平时不接 public/admin 流量
 - standby 需要能被 active 访问到 `internal` 接口
-- standby 的 `internal.replication.peer_base_url` 可以为空（standby 不主动分发）
+- standby 不需要配置静态 peer；standby 不主动分发，只需要正确上报 `node.advertise_url`
 - active 与 standby 均连接同一个 PostgreSQL 高可用拓扑
 
 ## 3. 方案要点
