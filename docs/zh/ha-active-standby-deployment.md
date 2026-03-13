@@ -48,6 +48,7 @@ flowchart LR
 - 只有 active 在 LB 上游池中
 - standby 平时不接 public/admin 流量
 - standby 需要能被 active 访问到 `internal` 接口
+- standby 的 `internal.replication.peer_base_url` 可以为空（standby 不主动分发）
 - active 与 standby 均连接同一个 PostgreSQL 高可用拓扑
 
 ## 3. 方案要点
@@ -74,16 +75,18 @@ standby 不应该：
 - 正常情况下接 public/admin 用户写流量
 - 与 active 同时写同一份逻辑文件树
 
-### 3.3 初始全量 + 后续增量
+### 3.3 历史补齐 + 后续增量
 
-阶段一不要从空盘直接只跑增量。
+当前实现支持：active 启动后自动触发一次历史 reconcile，并通过 internal 接口把历史文件批量补齐到 standby。
 
 建议顺序：
 
-1. 先做一次**离线全量同步**，让 standby 先拥有基础文件树
-2. 在 standby 上调用 `POST /api/v1/internal/replication/bootstrap/mark`，把复制位点初始化到本次全量同步的基线 outbox 序号
-3. 再开启增量 `internal` 复制
-4. 最后根据复制 lag 判断是否具备切换资格
+1. 确保 active / standby 都已启动，且 internal 鉴权配置一致
+2. 等待 active 完成自动 reconcile（可通过状态接口观察）
+3. 自动 reconcile 完成后，继续依赖 outbox 增量复制追平后续变更
+4. 最后根据复制 lag 与 reconcile 状态判断是否具备切换资格
+
+如果你要显式控制历史基线（例如离线全量拷贝后再接入），仍可走 `bootstrap/mark` 流程。
 
 仓库中已经提供辅助脚本：
 

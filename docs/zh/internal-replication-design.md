@@ -7,7 +7,7 @@
 - 文件变更由 active 通过 `internal` 接口复制到 standby
 - PostgreSQL 仍然作为元数据的统一来源
 
-> 注意：本文以**目标设计**为主；当前仓库已经落地了节点身份、内部鉴权、outbox / offsets、standby apply handler、active worker 与基础状态接口，但首次全量同步、reconcile 和更完整的切换自动化仍需继续补齐。
+> 注意：本文以**目标设计**为主；当前仓库已经落地了节点身份、内部鉴权、outbox / offsets、standby apply handler、active worker、reconcile（active 启动自动触发一次）与基础状态接口。更完整的切换自动化与运维编排仍需继续补齐。
 
 ## 1. 设计目标
 

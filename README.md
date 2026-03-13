@@ -169,6 +169,7 @@ bash scripts/local.sh standby
 - `.tmp/` 已加入 `.gitignore`
 - 只覆盖本地双实例必需字段：端口、节点身份、internal replication 和数据目录
 - 可通过环境变量覆盖本地端口和 internal shared secret，例如 `ACTIVE_PORT`、`STANDBY_PORT`、`INTERNAL_SHARED_SECRET`
+- `standby` 的 `internal.replication.peer_base_url` 默认是空值，这是预期行为；只有 `active` 需要配置 peer URL 并主动分发/补齐
 
 ## 高可用部署提示
 
@@ -182,7 +183,7 @@ bash scripts/local.sh standby
 
 ## scripts/bootstrap_standby.sh
 
-用于在 standby 完成离线全量拷贝后，调用 internal 接口写入 baseline，并立即查询复制状态：
+用于在离线全量拷贝场景下，调用 internal 接口写入 baseline，并立即查询复制状态：
 
 ```shell
 bash scripts/bootstrap_standby.sh \
@@ -215,6 +216,7 @@ bash scripts/bootstrap_standby.sh \
 - 脚本会自动按 internal HMAC 规则构造签名，不需要手工计算 header
 - 依赖 `curl`、`openssl`、`xxd`，若安装了 `jq` 会自动格式化 JSON 输出
 - `--outbox-id` 不传时，standby 会使用当前 source -> standby 的最大 outbox 序号作为 baseline
+- 当前代码已支持 active 启动后自动触发一次历史 reconcile 并推送到 standby；`bootstrap_standby.sh` 主要用于你要显式控制基线或做离线流程时
 
 ## scripts/package.sh
 
