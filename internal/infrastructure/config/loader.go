@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -95,6 +96,83 @@ func (l *Loader) overrideFromEnv(config *Config) {
 		if port, err := strconv.Atoi(v); err == nil {
 			config.Server.Port = port
 		}
+	}
+	if v := os.Getenv("WEBDAV_NODE_ID"); v != "" {
+		config.Node.ID = v
+	}
+	if v := os.Getenv("WEBDAV_NODE_ROLE"); v != "" {
+		config.Node.Role = v
+	}
+	if v := os.Getenv("WEBDAV_NODE_ADVERTISE_URL"); v != "" {
+		config.Node.AdvertiseURL = v
+	}
+	if v := os.Getenv("WEBDAV_REPLICATION_ENABLED"); v != "" {
+		config.Replication.Enabled = parseEnvBool(v)
+	}
+	if v := os.Getenv("WEBDAV_REPLICATION_SHARED_SECRET"); v != "" {
+		config.Replication.SharedSecret = v
+	}
+	if v := os.Getenv("WEBDAV_REPLICATION_ALLOWED_CLOCK_SKEW"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			config.Replication.AllowedClockSkew = d
+		}
+	}
+	if v := os.Getenv("WEBDAV_REPLICATION_DISPATCH_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			config.Replication.DispatchInterval = d
+		}
+	}
+	if v := os.Getenv("WEBDAV_REPLICATION_REQUEST_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			config.Replication.RequestTimeout = d
+		}
+	}
+	if v := os.Getenv("WEBDAV_REPLICATION_BATCH_SIZE"); v != "" {
+		if size, err := strconv.Atoi(v); err == nil {
+			config.Replication.BatchSize = size
+		}
+	}
+	if v := os.Getenv("WEBDAV_REPLICATION_RETRY_BACKOFF_BASE"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			config.Replication.RetryBackoffBase = d
+		}
+	}
+	if v := os.Getenv("WEBDAV_REPLICATION_MAX_RETRY_BACKOFF"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			config.Replication.MaxRetryBackoff = d
+		}
+	}
+	if v := os.Getenv("WEBDAV_PREFIX"); v != "" {
+		config.WebDAV.Prefix = v
+	}
+	if v := os.Getenv("WEBDAV_DIRECTORY"); v != "" {
+		config.WebDAV.Directory = v
+	}
+	if v := os.Getenv("WEBDAV_AUTO_CREATE_DIRECTORY"); v != "" {
+		config.WebDAV.AutoCreateDirectory = parseEnvBool(v)
+	}
+	if v := os.Getenv("WEBDAV_BEHIND_PROXY"); v != "" {
+		config.Security.BehindProxy = parseEnvBool(v)
+	}
+	if v := os.Getenv("WEBDAV_DB_HOST"); v != "" {
+		config.Database.Host = v
+	}
+	if v := os.Getenv("WEBDAV_DB_PORT"); v != "" {
+		if port, err := strconv.Atoi(v); err == nil {
+			config.Database.Port = port
+		}
+	}
+	if v := os.Getenv("WEBDAV_DB_NAME"); v != "" {
+		config.Database.Database = v
+	}
+	if v := os.Getenv("WEBDAV_DB_USER"); v != "" {
+		config.Database.Username = v
+	}
+	if v := os.Getenv("WEBDAV_DB_PASSWORD"); v != "" {
+		config.Database.Password = v
+	}
+	if v := os.Getenv("WEBDAV_DB_SSL_MODE"); v != "" {
+		config.Database.SSLMode = v
 	}
 	if v := os.Getenv("WEBDAV_JWT_SECRET"); v != "" {
 		config.Web3.JWTSecret = v
@@ -191,6 +269,12 @@ func (l *Loader) validate(config *Config) error {
 	if err := l.validateServer(config); err != nil {
 		return fmt.Errorf("server config: %w", err)
 	}
+	if err := l.validateNode(config); err != nil {
+		return fmt.Errorf("node config: %w", err)
+	}
+	if err := l.validateReplication(config); err != nil {
+		return fmt.Errorf("replication config: %w", err)
+	}
 	if err := l.validateWebDAV(config); err != nil {
 		return fmt.Errorf("webdav config: %w", err)
 	}
@@ -203,6 +287,66 @@ func (l *Loader) validate(config *Config) error {
 	if err := l.validateDatabase(config); err != nil {
 		return fmt.Errorf("database config: %w", err)
 	}
+	return nil
+}
+
+func (l *Loader) validateNode(config *Config) error {
+	role := strings.ToLower(strings.TrimSpace(config.Node.Role))
+	switch role {
+	case "", "active":
+		config.Node.Role = "active"
+	case "standby":
+		config.Node.Role = "standby"
+	default:
+		return fmt.Errorf("unsupported role %q: only active/standby supported", config.Node.Role)
+	}
+
+	config.Node.ID = strings.TrimSpace(config.Node.ID)
+	config.Node.AdvertiseURL = strings.TrimSpace(config.Node.AdvertiseURL)
+	if config.Node.AdvertiseURL != "" {
+		parsed, err := url.Parse(config.Node.AdvertiseURL)
+		if err != nil {
+			return fmt.Errorf("invalid node.advertise_url: %w", err)
+		}
+		if parsed.Scheme == "" || parsed.Host == "" {
+			return errors.New("node.advertise_url must include scheme and host")
+		}
+	}
+	return nil
+}
+
+func (l *Loader) validateReplication(config *Config) error {
+	replication := &config.Replication
+	replication.SharedSecret = strings.TrimSpace(replication.SharedSecret)
+
+	if !replication.Enabled {
+		return nil
+	}
+	if config.Node.ID == "" {
+		return errors.New("node.id is required when replication is enabled")
+	}
+	if replication.SharedSecret == "" {
+		return errors.New("replication.shared_secret is required when replication is enabled")
+	}
+	if replication.AllowedClockSkew <= 0 {
+		return errors.New("replication.allowed_clock_skew must be greater than zero")
+	}
+	if replication.DispatchInterval <= 0 {
+		return errors.New("replication.dispatch_interval must be greater than zero")
+	}
+	if replication.RequestTimeout <= 0 {
+		return errors.New("replication.request_timeout must be greater than zero")
+	}
+	if replication.BatchSize <= 0 {
+		return errors.New("replication.batch_size must be greater than zero")
+	}
+	if replication.RetryBackoffBase <= 0 {
+		return errors.New("replication.retry_backoff_base must be greater than zero")
+	}
+	if replication.MaxRetryBackoff < replication.RetryBackoffBase {
+		return errors.New("replication.max_retry_backoff must be greater than or equal to retry_backoff_base")
+	}
+
 	return nil
 }
 
@@ -240,7 +384,9 @@ func (l *Loader) validateWebDAV(config *Config) error {
 	// 检查目录是否存在
 	info, err := os.Stat(config.WebDAV.Directory)
 	if err != nil {
-		// 创建目录
+		if !config.WebDAV.AutoCreateDirectory {
+			return fmt.Errorf("directory does not exist: %w", err)
+		}
 		if err := os.MkdirAll(config.WebDAV.Directory, 0755); err != nil {
 			return fmt.Errorf("failed to create directory: %w", err)
 		}

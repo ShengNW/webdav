@@ -6,14 +6,16 @@ import (
 
 // Config 应用配置
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	Database DatabaseConfig `yaml:"database"` // 新增
-	WebDAV   WebDAVConfig   `yaml:"webdav"`
-	Web3     Web3Config     `yaml:"web3"`
-	Email    EmailConfig    `yaml:"email"`
-	Security SecurityConfig `yaml:"security"`
-	CORS     CORSConfig     `yaml:"cors"`
-	Log      LogConfig      `yaml:"log"`
+	Server      ServerConfig      `yaml:"server"`
+	Database    DatabaseConfig    `yaml:"database"` // 新增
+	Node        NodeConfig        `yaml:"node"`
+	Replication ReplicationConfig `yaml:"replication"`
+	WebDAV      WebDAVConfig      `yaml:"webdav"`
+	Web3        Web3Config        `yaml:"web3"`
+	Email       EmailConfig       `yaml:"email"`
+	Security    SecurityConfig    `yaml:"security"`
+	CORS        CORSConfig        `yaml:"cors"`
+	Log         LogConfig         `yaml:"log"`
 }
 
 // DatabaseConfig 数据库配置
@@ -43,12 +45,32 @@ type ServerConfig struct {
 	ShutdownTimeout time.Duration `yaml:"shutdown_timeout"`
 }
 
+// NodeConfig 节点配置
+type NodeConfig struct {
+	ID           string `yaml:"id"`
+	Role         string `yaml:"role"`
+	AdvertiseURL string `yaml:"advertise_url"`
+}
+
+// ReplicationConfig active / standby 复制配置
+type ReplicationConfig struct {
+	Enabled          bool          `yaml:"enabled"`
+	SharedSecret     string        `yaml:"shared_secret"`
+	AllowedClockSkew time.Duration `yaml:"allowed_clock_skew"`
+	DispatchInterval time.Duration `yaml:"dispatch_interval"`
+	RequestTimeout   time.Duration `yaml:"request_timeout"`
+	BatchSize        int           `yaml:"batch_size"`
+	RetryBackoffBase time.Duration `yaml:"retry_backoff_base"`
+	MaxRetryBackoff  time.Duration `yaml:"max_retry_backoff"`
+}
+
 // WebDAVConfig WebDAV 配置
 type WebDAVConfig struct {
-	Prefix      string `yaml:"prefix"`
-	Directory   string `yaml:"directory"`
-	NoSniff     bool   `yaml:"no_sniff"`
-	Permissions string `yaml:"permissions"`
+	Prefix              string `yaml:"prefix"`
+	Directory           string `yaml:"directory"`
+	AutoCreateDirectory bool   `yaml:"auto_create_directory"`
+	NoSniff             bool   `yaml:"no_sniff"`
+	Permissions         string `yaml:"permissions"`
 }
 
 // Web3Config Web3 配置
@@ -142,11 +164,24 @@ func DefaultConfig() *Config {
 			MaxIdleConns: 5,
 			MaxLifetime:  5 * time.Minute,
 		},
+		Node: NodeConfig{
+			Role: "active",
+		},
+		Replication: ReplicationConfig{
+			Enabled:          false,
+			AllowedClockSkew: 30 * time.Second,
+			DispatchInterval: 2 * time.Second,
+			RequestTimeout:   30 * time.Second,
+			BatchSize:        32,
+			RetryBackoffBase: 2 * time.Second,
+			MaxRetryBackoff:  5 * time.Minute,
+		},
 		WebDAV: WebDAVConfig{
-			Prefix:      "/dav",
-			Directory:   "/data",
-			NoSniff:     true,
-			Permissions: "R",
+			Prefix:              "/dav",
+			Directory:           "/data",
+			AutoCreateDirectory: true,
+			NoSniff:             true,
+			Permissions:         "R",
 		},
 		Web3: Web3Config{
 			TokenExpiration:        24 * time.Hour,

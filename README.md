@@ -18,11 +18,10 @@ cp config.yaml.template config.yaml
 
 ```shell
 # 启动时会自动检查并创建 webdav.directory 指定目录（如 ./test_data）
-go run cmd/server/main.go -c config.yaml
+go run ./cmd/warehouse -c config.yaml
 
 # 或者先编译后启动
-mkdir -p build
-go build -o build/warehouse cmd/server/main.go
+go build -o build/warehouse ./cmd/warehouse
 build/warehouse -c config.yaml
 
 ```
@@ -31,7 +30,48 @@ build/warehouse -c config.yaml
 
 ```shell
 curl http://127.0.0.1:6065/api/v1/public/health/heartbeat
+curl http://127.0.0.1:6065/api/v1/public/health/readiness
+
+# 或使用二进制直接做 readiness 检查
+build/warehouse -c config.yaml --check-ready
 ```
+
+## HA 命令行
+
+编译后的 `build/warehouse` 除了可以启动服务，也可以作为运维 CLI 使用：
+
+```shell
+# 查看当前实例的复制状态
+build/warehouse ha status -c config.yaml
+
+# 在 active 上查看某个 standby 的复制状态
+build/warehouse ha status -c config.yaml --target-node-id warehouse-standby-1
+
+# 直接查看某个 standby 实例自己的复制状态
+build/warehouse ha status -c config.yaml --peer --target-node-id warehouse-standby-1
+
+# 查看当前节点相关的 assignment 状态
+build/warehouse ha assignments status -c config.yaml
+
+# 手工触发某个 standby 的历史补齐
+build/warehouse ha reconcile start -c config.yaml --target-node-id warehouse-standby-1
+
+# 查看某个 standby 的历史补齐状态
+build/warehouse ha reconcile status -c config.yaml --target-node-id warehouse-standby-1
+
+# 显式写入某个 standby 的 bootstrap baseline
+build/warehouse ha bootstrap mark -c config.yaml --peer --target-node-id warehouse-standby-1 --outbox-id 123
+```
+
+说明：
+- CLI 会自动根据 `config.yaml` 构造 internal 签名请求，不需要手工写 `curl`、shell 脚本或 HMAC header
+- 默认访问当前实例的 internal 地址
+- `--target-node-id` 用于按 standby 精确观察或操作目标；在多 standby 场景下建议显式指定
+- 传 `--peer` 时会从 PostgreSQL 控制面解析当前 effective assignment 对应的 peer，并直接访问该 peer 的 internal 地址
+- 在多 standby 场景下，推荐把 `--peer` 和 `--target-node-id` 一起使用；如果只传 `--peer`，当前会使用控制面解析出的第一个匹配 peer
+- 也可以通过 `--base-url` 显式指定目标实例
+- `bootstrap mark` 现在要求携带当前 assignment generation；推荐使用 `--peer --target-node-id <standby-id>`，CLI 会自动补齐内部 header
+- `build/warehouse ha assignments status` 直接读取 PostgreSQL 控制面表，不走 HTTP；当前可以直接观察 active 侧 assignment allocator 写入的 lease / generation / state
 
 ## API 文档
 
@@ -143,6 +183,44 @@ bash scripts/starter.sh restart
 - PID 文件：`run/warehouse.pid`
 - 日志文件：`logs/warehouse.log`
 
+## scripts/local.sh
+
+用于本地快速拉起 active / standby 调试实例，使用 `go run` 前台启动：
+
+```shell
+# 默认启动 active
+bash scripts/local.sh
+
+# 显式启动 active
+bash scripts/local.sh active
+
+# 启动 standby
+bash scripts/local.sh standby
+```
+
+说明：
+- 使用前提是根目录 `config.yaml` 已经存在，并且 `go run ./cmd/warehouse -c config.yaml` 可以正常启动
+- 脚本不会读取 `config.yaml.template`，只会从现有 `config.yaml` 复制并生成本地配置到 `.tmp/active.yaml` 或 `.tmp/standby.yaml`
+- 数据目录分别使用 `.tmp/active/data` 和 `.tmp/standby/data`
+- 默认端口为 `6065`（active）和 `6066`（standby）
+- `.tmp/` 已加入 `.gitignore`
+- 只覆盖本地双实例必需字段：端口、节点身份、replication 和数据目录
+- 同时会自动补齐 `node.advertise_url`，让 active / standby 通过共享控制面自动发现彼此
+- 可通过环境变量覆盖本地端口和 internal shared secret，例如 `ACTIVE_PORT`、`STANDBY_PORT`、`INTERNAL_SHARED_SECRET`
+- active / standby 不再配置静态 `peer_node_id` / `peer_base_url`；运行时复制统一按 effective assignment 解析 peer，再通过 `cluster_nodes` 中的 `advertise_url` 补齐目标 URL
+- standby 的 internal apply / reconcile / bootstrap 请求会校验当前 effective assignment，只接受当前 assigned active
+
+## 高可用部署提示
+
+如果准备落地 `1 active + N standby`（最小可以先从 `1 standby` 起步）：
+
+- `webdav.directory` 应指向每台机器自己的本地数据盘挂载目录
+- 当前阶段一推荐路线是：active 对外、standby 仅 internal，同步本地文件数据
+- 建议为每个实例设置唯一的 `node.id`，并设置 `node.advertise_url` 作为 internal 可达地址，供共享控制面发现
+- 生产环境建议设置 `webdav.auto_create_directory: false`
+- 切换前除了检查 `/api/v1/public/health/readiness`，还要检查复制状态
+- 详细说明参考 [docs/zh/ha-active-standby-deployment.md](docs/zh/ha-active-standby-deployment.md)
+
 ## scripts/package.sh
 
 用于构建前端 + 后端并生成安装包：
@@ -178,40 +256,3 @@ bash scripts/mount_davfs.sh umount /mnt/webdav
 - 缺少 `davfs2`（`mount.davfs`）时，脚本会在 Linux 上尝试自动安装
 - 账号密码写入 `/etc/davfs2/secrets`（`600` 权限）
 - `install-fstab` 默认写入 `nofail,_netdev`，避免开机网络未就绪导致启动失败
-
-# 用户相关的操作
-
-```shell
-# 查看所有用户
-./build/user -config config.yaml -action list
-
-# 添加用户
-./build/user -config config.yaml -action add \
-  -username alice \
-  -password secret123 \
-  -directory alice \
-  -permissions CRUD \
-  -quota 5368709120
-
-# 添加web3用户
-./build/user -config config.yaml -action add \
-  -username bob \
-  -wallet 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb \
-  -directory bob \
-  -permissions CRUD
-
-# 删除用户
-./build/user -config config.yaml -action delete \
-  -username alice
-
-# 更新用户
-./build/user -config config.yaml -action update \
-  -username alice \
-  -permissions RU \
-  -quota 10737418240
-
-# 重置密码
-./build/user -config config.yaml -action reset-password \
-  -username alice \
-  -password newsecret
-```

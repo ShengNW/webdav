@@ -1,0 +1,432 @@
+package service
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/yeying-community/warehouse/internal/domain/cluster"
+	"github.com/yeying-community/warehouse/internal/infrastructure/config"
+	"github.com/yeying-community/warehouse/internal/infrastructure/repository"
+	"go.uber.org/zap"
+)
+
+type fakeAllocatorNodeRepository struct {
+	nodesByRole map[string][]*cluster.Node
+}
+
+func (r *fakeAllocatorNodeRepository) UpsertHeartbeat(context.Context, *cluster.Node) error {
+	return nil
+}
+
+func (r *fakeAllocatorNodeRepository) Get(context.Context, string) (*cluster.Node, error) {
+	return nil, cluster.ErrNodeNotFound
+}
+
+func (r *fakeAllocatorNodeRepository) ListByRole(_ context.Context, role string) ([]*cluster.Node, error) {
+	nodes := r.nodesByRole[role]
+	result := make([]*cluster.Node, 0, len(nodes))
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+		copied := *node
+		result = append(result, &copied)
+	}
+	return result, nil
+}
+
+type fakeAllocatorAssignmentRepository struct {
+	listEffectiveByActiveID string
+	getByPairActiveNodeID   string
+	getByPairStandbyNodeID  string
+	effectiveAssignments    []*cluster.ReplicationAssignment
+	assignmentsByPair       map[string]*cluster.ReplicationAssignment
+	upserted                []*cluster.ReplicationAssignment
+	releaseActiveNodeID     string
+	releaseKeepStandbyIDs   []string
+}
+
+func (r *fakeAllocatorAssignmentRepository) List(context.Context, repository.ClusterReplicationAssignmentFilter) ([]*cluster.ReplicationAssignment, error) {
+	return nil, nil
+}
+
+func (r *fakeAllocatorAssignmentRepository) ListEffectiveByActive(_ context.Context, activeNodeID string) ([]*cluster.ReplicationAssignment, error) {
+	r.listEffectiveByActiveID = activeNodeID
+	result := make([]*cluster.ReplicationAssignment, 0, len(r.effectiveAssignments))
+	for _, assignment := range r.effectiveAssignments {
+		if assignment == nil {
+			continue
+		}
+		copied := *assignment
+		result = append(result, &copied)
+	}
+	return result, nil
+}
+
+func (r *fakeAllocatorAssignmentRepository) GetEffectiveByStandby(context.Context, string) (*cluster.ReplicationAssignment, error) {
+	return nil, nil
+}
+
+func (r *fakeAllocatorAssignmentRepository) GetByPair(_ context.Context, activeNodeID, standbyNodeID string) (*cluster.ReplicationAssignment, error) {
+	r.getByPairActiveNodeID = activeNodeID
+	r.getByPairStandbyNodeID = standbyNodeID
+	if assignment := r.assignmentsByPair[activeNodeID+"->"+standbyNodeID]; assignment != nil {
+		copied := *assignment
+		return &copied, nil
+	}
+	for _, assignment := range r.effectiveAssignments {
+		if assignment == nil {
+			continue
+		}
+		if assignment.ActiveNodeID == activeNodeID && assignment.StandbyNodeID == standbyNodeID {
+			copied := *assignment
+			return &copied, nil
+		}
+	}
+	return nil, nil
+}
+
+func (r *fakeAllocatorAssignmentRepository) UpsertLease(_ context.Context, assignment *cluster.ReplicationAssignment) error {
+	copied := *assignment
+	copied.ID = int64(len(r.upserted) + 1)
+	copied.Generation = 1
+	if existing := r.assignmentsByPair[copied.ActiveNodeID+"->"+copied.StandbyNodeID]; existing != nil {
+		copied.Generation = existing.Generation
+		if cluster.AdvancesAssignmentGeneration(existing.State, copied.State) {
+			copied.Generation++
+		}
+	}
+	r.upserted = append(r.upserted, &copied)
+	if r.assignmentsByPair == nil {
+		r.assignmentsByPair = make(map[string]*cluster.ReplicationAssignment)
+	}
+	r.assignmentsByPair[copied.ActiveNodeID+"->"+copied.StandbyNodeID] = &copied
+	if assignment != nil {
+		assignment.ID = copied.ID
+		assignment.Generation = copied.Generation
+	}
+	return nil
+}
+
+func (r *fakeAllocatorAssignmentRepository) UpdateState(context.Context, *cluster.ReplicationAssignment) error {
+	return nil
+}
+
+func (r *fakeAllocatorAssignmentRepository) ReleaseByActiveExcept(_ context.Context, activeNodeID string, keepStandbyIDs []string) error {
+	r.releaseActiveNodeID = activeNodeID
+	r.releaseKeepStandbyIDs = append([]string(nil), keepStandbyIDs...)
+	return nil
+}
+
+func TestReplicationAssignmentAllocatorSyncOnceKeepsCurrentHealthyStandby(t *testing.T) {
+	now := time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC)
+	cfg := config.DefaultConfig()
+	cfg.Node.ID = "active-a"
+	cfg.Node.Role = "active"
+	cfg.Replication.Enabled = true
+
+	nodes := &fakeAllocatorNodeRepository{
+		nodesByRole: map[string][]*cluster.Node{
+			"standby": {
+				{NodeID: "standby-b", Role: "standby", AdvertiseURL: "http://standby-b", LastHeartbeatAt: now},
+				{NodeID: "standby-a", Role: "standby", AdvertiseURL: "http://standby-a", LastHeartbeatAt: now.Add(-time.Second)},
+			},
+		},
+	}
+	assignments := &fakeAllocatorAssignmentRepository{
+		effectiveAssignments: []*cluster.ReplicationAssignment{
+			{ActiveNodeID: "active-a", StandbyNodeID: "standby-a", State: cluster.AssignmentStateReplicating},
+		},
+	}
+
+	allocator := NewReplicationAssignmentAllocator(cfg, nodes, assignments, zap.NewNop())
+	allocator.now = func() time.Time { return now }
+
+	if err := allocator.SyncOnce(context.Background()); err != nil {
+		t.Fatalf("SyncOnce: %v", err)
+	}
+	if assignments.listEffectiveByActiveID != "active-a" {
+		t.Fatalf("unexpected current assignment lookup scope: %q", assignments.listEffectiveByActiveID)
+	}
+	if len(assignments.upserted) != 2 {
+		t.Fatalf("expected 2 upserts, got %d", len(assignments.upserted))
+	}
+	if assignments.upserted[0].StandbyNodeID != "standby-a" {
+		t.Fatalf("expected current healthy standby to be kept, got %#v", assignments.upserted[0])
+	}
+	if assignments.upserted[0].State != cluster.AssignmentStateReplicating {
+		t.Fatalf("expected current assignment state to be preserved, got %#v", assignments.upserted[0])
+	}
+	if assignments.upserted[1].StandbyNodeID != "standby-b" {
+		t.Fatalf("expected remaining healthy standby to be assigned too, got %#v", assignments.upserted[1])
+	}
+	if assignments.upserted[1].State != cluster.AssignmentStatePending {
+		t.Fatalf("expected new standby assignment to start pending, got %#v", assignments.upserted[1])
+	}
+}
+
+func TestReplicationAssignmentAllocatorSyncOnceSelectsAllFreshHealthyStandbys(t *testing.T) {
+	now := time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC)
+	cfg := config.DefaultConfig()
+	cfg.Node.ID = "active-a"
+	cfg.Node.Role = "active"
+	cfg.Replication.Enabled = true
+
+	nodes := &fakeAllocatorNodeRepository{
+		nodesByRole: map[string][]*cluster.Node{
+			"standby": {
+				{NodeID: "standby-b", Role: "standby", AdvertiseURL: "http://standby-b", LastHeartbeatAt: now},
+				{NodeID: "standby-a", Role: "standby", AdvertiseURL: "http://standby-a", LastHeartbeatAt: now.Add(-time.Second)},
+			},
+		},
+	}
+	assignments := &fakeAllocatorAssignmentRepository{}
+
+	allocator := NewReplicationAssignmentAllocator(cfg, nodes, assignments, zap.NewNop())
+	allocator.now = func() time.Time { return now }
+
+	if err := allocator.SyncOnce(context.Background()); err != nil {
+		t.Fatalf("SyncOnce: %v", err)
+	}
+	if len(assignments.upserted) != 2 {
+		t.Fatalf("expected 2 upserts, got %d", len(assignments.upserted))
+	}
+	if assignments.upserted[0].StandbyNodeID != "standby-b" {
+		t.Fatalf("expected freshest standby to be selected, got %#v", assignments.upserted[0])
+	}
+	if assignments.upserted[0].State != cluster.AssignmentStatePending {
+		t.Fatalf("expected brand new assignment to start pending, got %#v", assignments.upserted[0])
+	}
+	if assignments.upserted[1].StandbyNodeID != "standby-a" {
+		t.Fatalf("expected second healthy standby to be selected too, got %#v", assignments.upserted[1])
+	}
+	if assignments.upserted[1].State != cluster.AssignmentStatePending {
+		t.Fatalf("expected second standby assignment to start pending, got %#v", assignments.upserted[1])
+	}
+}
+
+func TestReplicationAssignmentAllocatorSyncOnceRecoversErrorStateAutomatically(t *testing.T) {
+	now := time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC)
+	cfg := config.DefaultConfig()
+	cfg.Node.ID = "active-a"
+	cfg.Node.Role = "active"
+	cfg.Replication.Enabled = true
+
+	nodes := &fakeAllocatorNodeRepository{
+		nodesByRole: map[string][]*cluster.Node{
+			"standby": {
+				{NodeID: "standby-a", Role: "standby", AdvertiseURL: "http://standby-a", LastHeartbeatAt: now},
+			},
+		},
+	}
+	assignments := &fakeAllocatorAssignmentRepository{
+		assignmentsByPair: map[string]*cluster.ReplicationAssignment{
+			"active-a->standby-a": {
+				ActiveNodeID:  "active-a",
+				StandbyNodeID: "standby-a",
+				State:         cluster.AssignmentStateError,
+				Generation:    3,
+			},
+		},
+	}
+
+	allocator := NewReplicationAssignmentAllocator(cfg, nodes, assignments, zap.NewNop())
+	allocator.now = func() time.Time { return now }
+
+	if err := allocator.SyncOnce(context.Background()); err != nil {
+		t.Fatalf("SyncOnce: %v", err)
+	}
+	if len(assignments.upserted) != 1 {
+		t.Fatalf("expected 1 upsert, got %d", len(assignments.upserted))
+	}
+	if assignments.upserted[0].State != cluster.AssignmentStatePending {
+		t.Fatalf("expected automatic recovery to move error to pending, got %#v", assignments.upserted[0])
+	}
+	if recovery, ok := allocator.errorRecoveryPairs["active-a->standby-a"]; !ok {
+		t.Fatalf("expected recovered error pair to be tracked")
+	} else if recovery.attempt != 1 {
+		t.Fatalf("expected first recovery attempt to be tracked, got %#v", recovery)
+	}
+}
+
+func TestReplicationAssignmentAllocatorSyncOnceBacksOffErrorRecovery(t *testing.T) {
+	now := time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC)
+	cfg := config.DefaultConfig()
+	cfg.Node.ID = "active-a"
+	cfg.Node.Role = "active"
+	cfg.Replication.Enabled = true
+
+	nodes := &fakeAllocatorNodeRepository{
+		nodesByRole: map[string][]*cluster.Node{
+			"standby": {
+				{NodeID: "standby-a", Role: "standby", AdvertiseURL: "http://standby-a", LastHeartbeatAt: now},
+			},
+		},
+	}
+	assignments := &fakeAllocatorAssignmentRepository{
+		assignmentsByPair: map[string]*cluster.ReplicationAssignment{
+			"active-a->standby-a": {
+				ActiveNodeID:  "active-a",
+				StandbyNodeID: "standby-a",
+				State:         cluster.AssignmentStateError,
+				Generation:    3,
+			},
+		},
+	}
+
+	allocator := NewReplicationAssignmentAllocator(cfg, nodes, assignments, zap.NewNop())
+	allocator.now = func() time.Time { return now }
+	allocator.errorRetryBase = 10 * time.Second
+	allocator.errorRetryMax = time.Minute
+
+	if err := allocator.SyncOnce(context.Background()); err != nil {
+		t.Fatalf("initial SyncOnce: %v", err)
+	}
+	if assignments.upserted[0].State != cluster.AssignmentStatePending {
+		t.Fatalf("expected first automatic recovery to move error to pending, got %#v", assignments.upserted[0])
+	}
+
+	assignments.upserted = nil
+	assignments.assignmentsByPair["active-a->standby-a"] = &cluster.ReplicationAssignment{
+		ActiveNodeID:  "active-a",
+		StandbyNodeID: "standby-a",
+		State:         cluster.AssignmentStateError,
+		Generation:    4,
+	}
+
+	allocator.now = func() time.Time { return now.Add(5 * time.Second) }
+	if err := allocator.SyncOnce(context.Background()); err != nil {
+		t.Fatalf("second SyncOnce: %v", err)
+	}
+	if len(assignments.upserted) != 1 {
+		t.Fatalf("expected one upsert, got %d", len(assignments.upserted))
+	}
+	if assignments.upserted[0].State != cluster.AssignmentStateError {
+		t.Fatalf("expected error state to be preserved during backoff, got %#v", assignments.upserted[0])
+	}
+
+	assignments.upserted = nil
+	allocator.now = func() time.Time { return now.Add(10 * time.Second) }
+
+	if err := allocator.SyncOnce(context.Background()); err != nil {
+		t.Fatalf("third SyncOnce: %v", err)
+	}
+	if len(assignments.upserted) != 1 {
+		t.Fatalf("expected 1 upsert, got %d", len(assignments.upserted))
+	}
+	if assignments.upserted[0].State != cluster.AssignmentStatePending {
+		t.Fatalf("expected retry after backoff to move error to pending, got %#v", assignments.upserted[0])
+	}
+	if recovery := allocator.errorRecoveryPairs["active-a->standby-a"]; recovery.attempt != 2 {
+		t.Fatalf("expected second recovery attempt to be tracked, got %#v", recovery)
+	}
+}
+
+func TestReplicationAssignmentAllocatorSyncOnceClearsErrorBackoffAfterEffectiveState(t *testing.T) {
+	now := time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC)
+	cfg := config.DefaultConfig()
+	cfg.Node.ID = "active-a"
+	cfg.Node.Role = "active"
+	cfg.Replication.Enabled = true
+
+	nodes := &fakeAllocatorNodeRepository{
+		nodesByRole: map[string][]*cluster.Node{
+			"standby": {
+				{NodeID: "standby-a", Role: "standby", AdvertiseURL: "http://standby-a", LastHeartbeatAt: now},
+			},
+		},
+	}
+	assignments := &fakeAllocatorAssignmentRepository{
+		assignmentsByPair: map[string]*cluster.ReplicationAssignment{
+			"active-a->standby-a": {
+				ActiveNodeID:  "active-a",
+				StandbyNodeID: "standby-a",
+				State:         cluster.AssignmentStateError,
+				Generation:    3,
+			},
+		},
+	}
+
+	allocator := NewReplicationAssignmentAllocator(cfg, nodes, assignments, zap.NewNop())
+	allocator.now = func() time.Time { return now }
+	allocator.errorRetryBase = 10 * time.Second
+	allocator.errorRetryMax = time.Minute
+
+	if err := allocator.SyncOnce(context.Background()); err != nil {
+		t.Fatalf("initial SyncOnce: %v", err)
+	}
+	if recovery := allocator.errorRecoveryPairs["active-a->standby-a"]; recovery.attempt != 1 {
+		t.Fatalf("expected recovery state to exist after first retry, got %#v", recovery)
+	}
+
+	assignments.upserted = nil
+	assignments.assignmentsByPair["active-a->standby-a"] = &cluster.ReplicationAssignment{
+		ActiveNodeID:  "active-a",
+		StandbyNodeID: "standby-a",
+		State:         cluster.AssignmentStateReplicating,
+		Generation:    4,
+	}
+	allocator.now = func() time.Time { return now.Add(2 * time.Second) }
+	if err := allocator.SyncOnce(context.Background()); err != nil {
+		t.Fatalf("replicating SyncOnce: %v", err)
+	}
+	if _, ok := allocator.errorRecoveryPairs["active-a->standby-a"]; ok {
+		t.Fatalf("expected effective assignment to clear recovery backoff")
+	}
+
+	assignments.upserted = nil
+	assignments.assignmentsByPair["active-a->standby-a"] = &cluster.ReplicationAssignment{
+		ActiveNodeID:  "active-a",
+		StandbyNodeID: "standby-a",
+		State:         cluster.AssignmentStateError,
+		Generation:    4,
+	}
+	allocator.now = func() time.Time { return now.Add(3 * time.Second) }
+	if err := allocator.SyncOnce(context.Background()); err != nil {
+		t.Fatalf("error SyncOnce after clear: %v", err)
+	}
+	if len(assignments.upserted) != 1 || assignments.upserted[0].State != cluster.AssignmentStatePending {
+		t.Fatalf("expected recovery after effective-state reset, got %#v", assignments.upserted)
+	}
+	if recovery := allocator.errorRecoveryPairs["active-a->standby-a"]; recovery.attempt != 1 {
+		t.Fatalf("expected recovery attempt to restart from 1, got %#v", recovery)
+	}
+}
+
+func TestReplicationAssignmentAllocatorSyncOnceReleasesWhenNoHealthyStandby(t *testing.T) {
+	now := time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC)
+	cfg := config.DefaultConfig()
+	cfg.Node.ID = "active-a"
+	cfg.Node.Role = "active"
+	cfg.Replication.Enabled = true
+
+	nodes := &fakeAllocatorNodeRepository{
+		nodesByRole: map[string][]*cluster.Node{
+			"standby": {
+				{NodeID: "standby-a", Role: "standby", AdvertiseURL: "http://standby-a", LastHeartbeatAt: now.Add(-time.Minute)},
+			},
+		},
+	}
+	assignments := &fakeAllocatorAssignmentRepository{
+		effectiveAssignments: []*cluster.ReplicationAssignment{
+			{ActiveNodeID: "active-a", StandbyNodeID: "standby-a", State: cluster.AssignmentStateReplicating},
+		},
+	}
+
+	allocator := NewReplicationAssignmentAllocator(cfg, nodes, assignments, zap.NewNop())
+	allocator.now = func() time.Time { return now }
+
+	if err := allocator.SyncOnce(context.Background()); err != nil {
+		t.Fatalf("SyncOnce: %v", err)
+	}
+	if len(assignments.upserted) != 0 {
+		t.Fatalf("expected no upsert, got %#v", assignments.upserted)
+	}
+	if assignments.releaseActiveNodeID != "active-a" {
+		t.Fatalf("unexpected release active node id: %q", assignments.releaseActiveNodeID)
+	}
+	if len(assignments.releaseKeepStandbyIDs) != 0 {
+		t.Fatalf("expected empty keep set, got %#v", assignments.releaseKeepStandbyIDs)
+	}
+}
