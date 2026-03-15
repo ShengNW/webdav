@@ -91,12 +91,55 @@ standby 不应该：
 - reconcile 成功后，active 会自动向对应 standby 发送一次 `bootstrap/mark`，把当前 watermark outbox id 写成该 generation 的 baseline offset
 - 如果某条 assignment 因历史补齐失败进入 `error`，allocator 会按退避节奏自动把它恢复到 `pending`，让后续 auto reconcile 继续接管
 
+运维上要明确理解成：
+
+- `replication.enabled=true` 但暂时没有可用 standby 时，active 仍然继续本地写成功，不会因为 `replication peer is unavailable` 直接把用户写请求打成失败
+- 这段时间的写入不会形成对应 standby 的增量 outbox，需要等 standby 恢复后再补
+- standby 恢复后，如果重新通过心跳注册为健康节点，allocator 会重新为它建立 effective assignment，后台会自动补 baseline
+- 因此在 `standby 全挂 -> active 继续写 -> standby 恢复` 这条主路径下，正常运维预期应是“先观察自动补齐”，通常不需要第一时间人工执行 `reconcile/start`
+- 只有在长时间无进展、assignment 持续 `error`、或 internal 网络 / 鉴权配置异常时，才需要人工介入
+
+一个更直接的判断句是：
+
+- “后续要依赖 reconcile 补副本”这句话在当前实现里，默认含义是“后台会自动补，不是默认需要人工补”
+
+再明确一点：
+
+- 只要 active 还在运行，standby 恢复后不依赖人工先补
+- 只要 active 还在运行，standby 恢复后也不依赖再重启一次 active
+- standby 恢复后，应该先给后台 automatic reconcile 一个观察窗口，而不是先执行人工命令
+
+建议把下面这张表当成运维默认动作：
+
+| 场景 | 系统默认行为 | 运维默认动作 |
+| --- | --- | --- |
+| 只部署 active，暂时没有 standby | active 继续本地写；日志会出现复制不可用的 `WARN` | 不需要人工补；等后续 standby 接入后再观察自动补齐 |
+| standby 全挂，但 active 仍在运行 | active 继续本地写；缺失窗口不会生成对应 standby 的 outbox | 先恢复 standby，再观察 automatic reconcile 是否开始补历史 |
+| standby 刚恢复或新加入 | 心跳恢复后，allocator 重建 assignment；后台自动跑 reconcile / bootstrap | 先观察 `ha status` / `ha reconcile status`，通常不需要立刻手工执行 `reconcile/start` |
+| standby 长时间无进展，或 assignment 持续 `error` | 自动恢复链路未能收敛 | 这时才排查 internal 地址、shared secret、网络、鉴权，并视情况手工触发 |
+
 建议顺序：
 
 1. 确保 active / standby 都已启动，且 internal 鉴权配置一致
-2. 等待 active 完成 startup reconcile；如果启动窗口内未完成，继续观察后台 periodic auto reconcile 是否补齐
-3. 当 standby baseline 初始化成功后，继续依赖 outbox 增量复制追平后续变更
-4. 最后根据复制 lag、assignment 状态与 reconcile 状态判断是否具备切换资格
+2. 如果 standby 是新加入或刚恢复，先观察后台 automatic reconcile 是否已接管；正常情况下不需要立刻人工执行 `reconcile/start`
+3. 使用 `build/warehouse ha status -c config.yaml --target-node-id <standby-node-id>` 确认心跳、assignment 和复制状态是否在推进
+4. 使用 `build/warehouse ha reconcile status -c config.yaml --target-node-id <standby-node-id>` 确认历史补齐是否已经自动开始
+5. 等待 active 完成 startup reconcile；如果启动窗口内未完成，继续观察后台 periodic auto reconcile 是否补齐
+6. 当 standby baseline 初始化成功后，继续依赖 outbox 增量复制追平后续变更
+7. 最后根据复制 lag、assignment 状态与 reconcile 状态判断是否具备切换资格
+
+建议观察窗口：
+
+- standby 心跳默认 5 秒
+- active allocator 默认 5 秒一轮续租 / 重建 assignment
+- periodic auto reconcile 默认 30 秒一轮
+
+所以 standby 恢复后，典型的“重新被发现并开始自动补齐”的时延通常是几十秒到 1 分钟级。
+
+一个实用的运维判断是：
+
+- 连续多个观察周期内，只要 `ha status` 或 `ha reconcile status` 还在推进，就继续等自动恢复
+- 如果连续多个周期完全无进展，再进入人工排查和手工触发
 
 如果你要显式控制历史基线（例如离线全量拷贝后再接入），仍可手工走 `bootstrap/mark` 流程；但这已经不是正常启动后的主路径。
 

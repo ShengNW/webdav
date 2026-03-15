@@ -198,13 +198,15 @@ func (s *WebDAVService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		if rec.status >= 200 && rec.status < 300 {
 			if err := s.recordMutation(r.Context(), userDir, r); err != nil {
-				s.logger.Error("failed to record replication mutation",
+				if s.handleMutationRecordError("write mutation skipped because no standby is currently available",
+					err,
 					zap.String("username", u.Username),
 					zap.String("method", r.Method),
 					zap.String("path", r.URL.Path),
-					zap.Error(err))
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-				return
+				) {
+					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					return
+				}
 			}
 			s.updateUsedSpace(r.Context(), u, userDir)
 		}
@@ -283,9 +285,15 @@ func (s *WebDAVService) handleDeleteWithRecycle(w http.ResponseWriter, r *http.R
 		handler.ServeHTTP(rec, r)
 		if rec.status >= 200 && rec.status < 300 {
 			if err := s.mutationRecorder.RemovePath(r.Context(), fullPath, info.IsDir()); err != nil {
-				s.logger.Error("failed to record fallback delete mutation", zap.Error(err))
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-				return
+				if s.handleMutationRecordError("fallback delete mutation skipped because no standby is currently available",
+					err,
+					zap.String("username", u.Username),
+					zap.String("path", r.URL.Path),
+					zap.Bool("is_dir", info.IsDir()),
+				) {
+					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					return
+				}
 			}
 			s.updateUsedSpace(r.Context(), u, userDir)
 		}
@@ -351,10 +359,24 @@ func (s *WebDAVService) moveToRecycle(ctx context.Context, u *user.User, relativ
 		// 不返回错误，因为文件已经移动了
 	}
 	if err := s.mutationRecorder.EnsureDir(ctx, s.recycleDir); err != nil {
-		return true, fmt.Errorf("record recycle directory ensure event: %w", err)
+		if s.handleMutationRecordError("recycle directory replication ensure skipped because no standby is currently available",
+			err,
+			zap.String("username", u.Username),
+			zap.String("recycle_dir", s.recycleDir),
+		) {
+			return true, fmt.Errorf("record recycle directory ensure event: %w", err)
+		}
 	}
 	if err := s.mutationRecorder.MovePath(ctx, fullPath, recyclePath, isDir); err != nil {
-		return true, fmt.Errorf("record recycle move event: %w", err)
+		if s.handleMutationRecordError("recycle move replication event skipped because no standby is currently available",
+			err,
+			zap.String("username", u.Username),
+			zap.String("from_path", fullPath),
+			zap.String("to_path", recyclePath),
+			zap.Bool("is_dir", isDir),
+		) {
+			return true, fmt.Errorf("record recycle move event: %w", err)
+		}
 	}
 
 	s.logger.Info("file moved to recycle",
@@ -750,6 +772,26 @@ func (s *WebDAVService) updateUsedSpace(ctx context.Context, u *user.User, userD
 	s.logger.Debug("used space updated",
 		zap.String("username", u.Username),
 		zap.Int64("used_space", used))
+}
+
+func (s *WebDAVService) handleMutationRecordError(message string, err error, fields ...zap.Field) bool {
+	if err == nil {
+		return false
+	}
+
+	if isReplicationPeerUnavailable(err) {
+		if s != nil && s.logger != nil {
+			fields = append(fields, zap.Error(err))
+			s.logger.Warn(message, fields...)
+		}
+		return false
+	}
+
+	if s != nil && s.logger != nil {
+		fields = append(fields, zap.Error(err))
+		s.logger.Error("failed to record replication mutation", fields...)
+	}
+	return true
 }
 
 // checkPermission 检查权限
