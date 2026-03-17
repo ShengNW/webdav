@@ -52,6 +52,10 @@ sequenceDiagram
 ### Creation & Permissions
 
 - Target user is resolved by wallet address.
+- Three audience modes are supported:
+  - `targetMode=addresses`: address-sharing with one or more wallet addresses
+  - `targetMode=groups`: address-book multi-group expansion via `groupIds` (snapshot to users)
+  - `targetMode=all_users`: all signed-in users
 - `permissions` can be `read/create/update/delete` (or `CRUD` string).
 - Files or directories are supported.
 - Successful create auto-adds the target to address book (if absent).
@@ -74,6 +78,18 @@ sequenceDiagram
 
 - Download, upload, create folder, rename, delete all require permission checks.
 
+### Current Implementation
+
+- Create payload is fixed to `targetMode + targetAddresses/groupIds`.
+- Internal-share metadata is persisted in `internal_share_items + internal_share_audiences`.
+
+### Upgrade Notes
+
+- Ensure DB credentials have `CREATE/ALTER/INDEX` permissions; startup runs schema migration.
+- If `share_user_items` exists in an upgraded database, startup migration idempotently imports historical rows into `internal_share_*`.
+- After upgrade, create API only accepts the new payload (`targetMode + targetAddresses/groupIds`); clients using `targetAddress` must be updated.
+- Verify post-upgrade by spot-checking data in `internal_share_items` and `internal_share_audiences`.
+
 ## Recycle Bin
 
 ### Write to Recycle (from WebDAV DELETE)
@@ -92,3 +108,8 @@ sequenceDiagram
 - New: `{hash}_{original name}`
 - Legacy: `{username}_{directory}_{name}_{timestamp}`
 
+## Relationship with Standby
+
+- Sharing metadata (public share, internal share, audiences) lives in PostgreSQL and is naturally consistent across active/standby nodes using the same DB.
+- File operations inside shared paths (upload/rename/delete) still go through the filesystem mutation path and existing internal replication chain.
+- This sharing model evolution does not bypass the current standby replication design.
